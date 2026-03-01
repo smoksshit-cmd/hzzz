@@ -1,0 +1,10 @@
+{
+    "display_name": "📱 Phone Widget",
+    "version": "1.0.0",
+    "author": "Custom",
+    "homePage": "",
+    "auto_update": false,
+    "js": "index.js",
+    "css": "style.css",
+    "description": "A phone overlay with mini-games. Toggle via the Extensions menu."
+}

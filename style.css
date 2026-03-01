@@ -1,0 +1,454 @@
+/* ===== PHONE WIDGET EXTENSION ===== */
+
+#phone-widget-btn {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border: 2px solid #00d4ff;
+    color: #00d4ff;
+    font-size: 22px;
+    cursor: pointer;
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+    transition: all 0.3s ease;
+}
+
+#phone-widget-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 25px rgba(0, 212, 255, 0.7);
+}
+
+/* PHONE CONTAINER */
+#phone-overlay {
+    position: fixed;
+    bottom: 140px;
+    right: 20px;
+    width: 320px;
+    height: 620px;
+    z-index: 9999;
+    display: none;
+    filter: drop-shadow(0 30px 60px rgba(0,0,0,0.8));
+    animation: phoneAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes phoneAppear {
+    from { opacity: 0; transform: scale(0.8) translateY(30px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+#phone-overlay.visible {
+    display: block;
+}
+
+/* PHONE SHELL */
+.phone-shell {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(160deg, #0f0f1a 0%, #1a1a2e 50%, #0d0d1f 100%);
+    border-radius: 40px;
+    border: 1px solid rgba(255,255,255,0.1);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    font-family: 'SF Pro Display', -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Side reflection */
+.phone-shell::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 40px;
+    border: 2px solid transparent;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent 40%, transparent 60%, rgba(255,255,255,0.05)) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: destination-out;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* STATUS BAR */
+.phone-status-bar {
+    height: 40px;
+    padding: 8px 20px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.phone-time {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+.phone-status-icons {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    color: #fff;
+    font-size: 11px;
+}
+
+/* NOTCH */
+.phone-notch {
+    width: 100px;
+    height: 22px;
+    background: #000;
+    border-radius: 0 0 14px 14px;
+    margin: 0 auto;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.phone-notch::after {
+    content: '';
+    position: absolute;
+    top: 6px; left: 50%; transform: translateX(-50%);
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* SCREEN */
+.phone-screen {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* HOME SCREEN */
+.phone-home {
+    flex: 1;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.phone-home-title {
+    color: rgba(255,255,255,0.4);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 0 4px;
+    margin-top: 4px;
+}
+
+.phone-apps-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 4px;
+}
+
+.phone-app-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.phone-app-icon:active {
+    transform: scale(0.9);
+}
+
+.phone-app-icon-img {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transition: all 0.2s ease;
+}
+
+.phone-app-icon:hover .phone-app-icon-img {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+}
+
+.phone-app-icon-label {
+    color: rgba(255,255,255,0.8);
+    font-size: 10px;
+    text-align: center;
+    font-weight: 500;
+}
+
+/* APP SCREEN */
+.phone-app-screen {
+    position: absolute;
+    inset: 0;
+    background: #0a0a14;
+    display: flex;
+    flex-direction: column;
+    animation: slideIn 0.25s ease;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+}
+
+.phone-app-header {
+    height: 44px;
+    background: rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.phone-back-btn {
+    color: #00d4ff;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.phone-back-btn:hover { background: rgba(0,212,255,0.1); }
+
+.phone-app-title {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+    text-align: center;
+    margin-right: 40px;
+}
+
+.phone-app-content {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* HOME INDICATOR */
+.phone-home-indicator {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.phone-home-indicator-bar {
+    width: 100px;
+    height: 4px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.phone-home-indicator-bar:hover { background: rgba(255,255,255,0.5); }
+
+/* ===== SNAKE GAME ===== */
+#snake-canvas {
+    display: block;
+    margin: 0 auto;
+    border: 1px solid rgba(0,212,255,0.2);
+    background: #050510;
+}
+
+.snake-ui {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.snake-score-block {
+    text-align: center;
+}
+
+.snake-score-label {
+    color: rgba(255,255,255,0.4);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.snake-score-value {
+    color: #00d4ff;
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.snake-btn {
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: #00d4ff;
+    border-radius: 10px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.snake-btn:hover {
+    background: rgba(0,212,255,0.2);
+    box-shadow: 0 0 12px rgba(0,212,255,0.3);
+}
+
+.snake-dpad {
+    display: grid;
+    grid-template-areas: '. up .' 'left . right' '. down .';
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+    padding: 8px 40px;
+    flex-shrink: 0;
+}
+
+.dpad-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.1s;
+}
+
+.dpad-btn:active, .dpad-btn.pressed {
+    background: rgba(0,212,255,0.2);
+    border-color: rgba(0,212,255,0.5);
+}
+
+/* ===== 2048 GAME ===== */
+.game2048-container {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.game2048-scores {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.g2048-score {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 6px;
+    text-align: center;
+}
+
+.g2048-score-label {
+    color: rgba(255,255,255,0.4);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.g2048-score-val {
+    color: #ffd700;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.game2048-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 6px;
+    width: 100%;
+    aspect-ratio: 1;
+}
+
+.tile {
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    transition: background 0.1s ease;
+    aspect-ratio: 1;
+}
+
+.tile-0    { background: rgba(255,255,255,0.03); }
+.tile-2    { background: #1a3a5c; color: #7ec8e3; font-size: 16px; }
+.tile-4    { background: #1a4a3a; color: #7ee3c0; font-size: 16px; }
+.tile-8    { background: #3a3a1a; color: #e3d07e; }
+.tile-16   { background: #3a2a1a; color: #e3a07e; }
+.tile-32   { background: #4a1a1a; color: #e37e7e; }
+.tile-64   { background: #5a1a1a; color: #ff7e7e; }
+.tile-128  { background: #5a3a00; color: #ffd700; font-size: 14px; }
+.tile-256  { background: #5a4500; color: #ffd700; font-size: 14px; }
+.tile-512  { background: #4a3a00; color: #ffe44d; font-size: 13px; }
+.tile-1024 { background: #3a2d00; color: #ffec80; font-size: 11px; }
+.tile-2048 { background: #2d2000; color: #fff; font-size: 10px; box-shadow: 0 0 20px rgba(255,215,0,0.6); }
+
+.game2048-btn {
+    background: rgba(255,215,0,0.1);
+    border: 1px solid rgba(255,215,0,0.3);
+    color: #ffd700;
+    border-radius: 10px;
+    padding: 7px 20px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.game2048-btn:hover {
+    background: rgba(255,215,0,0.2);
+}
+
+.game2048-message {
+    color: rgba(255,255,255,0.5);
+    font-size: 11px;
+    text-align: center;
+}
+
+/* ===== FLAPPY BIRD ===== */
+#flappy-canvas {
+    display: block;
+    margin: 0 auto;
+    cursor: pointer;
+}
+
+.flappy-ui {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
