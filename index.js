@@ -7,17 +7,16 @@
     enabled: true,
     namePrefix: 'Janitor - ',
 
-    // 1) сначала пытаемся напрямую (самый приватный вариант)
+    // Порядок попыток:
+    // 1) direct fetch (самый приватный)
     tryDirectFetch: true,
 
-    // 2) если CORS мешает — используем браузерный прокси (НЕ требует config.yaml)
+    // 2) browser proxy (не требует config.yaml, но это сторонний сервис)
     useJinaProxyFallback: true,
-
-    // 3) если включено — можно попытаться /api/assets/download (но у многих будет 403 без whitelist)
-    useServerDownloadFallback: false,
-
-    // какой прокси использовать (можно расширять списком)
     jinaBase: 'https://r.jina.ai/',
+
+    // 3) server fallback (/api/assets/download) — у многих 403 без whitelist, выключено по умолчанию
+    useServerDownloadFallback: false,
   });
 
   function ctx() { return SillyTavern.getContext(); }
@@ -26,7 +25,9 @@
     const { extensionSettings } = ctx();
     if (!extensionSettings[MODULE_KEY]) extensionSettings[MODULE_KEY] = structuredClone(defaultSettings);
     for (const k of Object.keys(defaultSettings)) {
-      if (!Object.hasOwn(extensionSettings[MODULE_KEY], k)) extensionSettings[MODULE_KEY][k] = defaultSettings[k];
+      if (!Object.hasOwn(extensionSettings[MODULE_KEY], k)) {
+        extensionSettings[MODULE_KEY][k] = defaultSettings[k];
+      }
     }
     return extensionSettings[MODULE_KEY];
   }
@@ -63,23 +64,23 @@
 
           <label class="jsi_ck" style="margin-left:10px">
             <input type="checkbox" id="jsi_jina" ${s.useJinaProxyFallback ? 'checked' : ''}>
-            <span>Fallback через r.jina.ai (без config)</span>
+            <span>Fallback через r.jina.ai</span>
           </label>
 
           <label class="jsi_ck" style="margin-left:10px">
             <input type="checkbox" id="jsi_server" ${s.useServerDownloadFallback ? 'checked' : ''}>
-            <span>Fallback через сервер ST (/api/assets/download)</span>
+            <span>Fallback через сервер ST</span>
           </label>
         </div>
 
         <div class="jsi_warn">
-          ⚠️ r.jina.ai — сторонний “reader”-прокси. Если включён, ссылка/контент будут проходить через него.
-          Если это не ок — выключи галку и используй прямой fetch (если работает).
+          ⚠️ r.jina.ai — сторонний reader-прокси. Если включён, ссылка/контент проходят через него.
+          Если не ок — выключи “Fallback через r.jina.ai” и пользуйся direct fetch (если он у тебя работает).
         </div>
 
         <div class="jsi_help">
-          Поддерживает ссылки вида <code>janitorai.com/scripts/UUID</code>.<br>
-          Импорт создаёт новый World Info и переносит entries (ключи/контент/приоритет).
+          Поддерживает ссылки: <code>https://janitorai.com/scripts/UUID</code><br>
+          Импорт создаёт новый World Info и переносит entries (keys/content/order).
         </div>
 
         <div class="jsi_status" id="jsi_status"></div>
@@ -105,7 +106,9 @@
     });
   }
 
-  function setStatus(t) { $('#jsi_status').text(t ? String(t) : ''); }
+  function setStatus(t) {
+    $('#jsi_status').text(t ? String(t) : '');
+  }
 
   // ---------- URL helpers ----------
 
@@ -136,10 +139,8 @@
 
   async function fetchTextViaJina(url) {
     const s = getSettings();
-    const base = String(s.jinaBase || 'https://r.jina.ai/').replace(/\/+$/, '/') ;
-    // r.jina.ai принимает полный URL прямо после /
-    // пример: https://r.jina.ai/https://janitorai.com/scripts/...
-    const proxyUrl = base + url;
+    const base = String(s.jinaBase || 'https://r.jina.ai/').replace(/\/+$/, '/');
+    const proxyUrl = base + url; // https://r.jina.ai/https://...
     const r = await fetch(proxyUrl, { method: 'GET' });
     if (!r.ok) throw new Error(`Jina HTTP ${r.status} ${r.statusText}`);
     return await r.text();
@@ -162,48 +163,132 @@
     const s = getSettings();
     const errors = [];
 
+    // 1) direct
     if (s.tryDirectFetch) {
       try { return await fetchTextDirect(url); }
       catch (e) { errors.push(`direct: ${e?.message || e}`); }
     }
 
+    // 2) jina
     if (s.useJinaProxyFallback) {
       try { return await fetchTextViaJina(url); }
       catch (e) { errors.push(`jina: ${e?.message || e}`); }
     }
 
+    // 3) server
     if (s.useServerDownloadFallback) {
       try { return await fetchTextViaServer(url); }
       catch (e) { errors.push(`server: ${e?.message || e}`); }
     }
 
-    throw new Error(`Не удалось скачать. Причины: ${errors.join(' | ')}`);
+    throw new Error(`Не удалось скачать. ${errors.join(' | ')}`);
   }
 
-  async function fetchJsonSmart(url) {
-    const text = await fetchTextSmart(url);
-    try { return JSON.parse(text); } catch {}
+  // ---------- Robust JSON parsing ----------
 
-    // если это HTML (страница), попробуем __NEXT_DATA__
-    const next = extractNextData(text);
-    if (next) return next;
+  function tryParseJson(s) {
+    try { return JSON.parse(s); } catch { return null; }
+  }
 
-    // последняя попытка — выдернуть JSON-объект
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
+  function stripBom(s) {
+    return String(s ?? '').replace(/^\uFEFF/, '');
+  }
 
-    throw new Error('Не смог распарсить JSON/NextData');
+  function extractJsonFromFences(text) {
+    // ```json ... ``` или ``` ... ```
+    const t = String(text ?? '');
+    const re = /```(?:json)?\s*([\s\S]*?)```/gi;
+    const blocks = [];
+    let m;
+    while ((m = re.exec(t))) {
+      blocks.push(m[1]);
+    }
+    // пробуем с конца (обычно самый “жирный” блок — последний)
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const p = tryParseJson(stripBom(blocks[i].trim()));
+      if (p !== null) return p;
+    }
+    return null;
+  }
+
+  function extractBalancedJson(text) {
+    // вытаскиваем первый валидный JSON объект/массив по балансу скобок
+    const s = String(text ?? '');
+    const firstObj = s.indexOf('{');
+    const firstArr = s.indexOf('[');
+    let start = -1;
+
+    if (firstObj === -1) start = firstArr;
+    else if (firstArr === -1) start = firstObj;
+    else start = Math.min(firstObj, firstArr);
+
+    if (start === -1) return null;
+
+    const openChar = s[start];
+    const closeChar = openChar === '{' ? '}' : ']';
+
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i];
+
+      if (inStr) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = false; continue; }
+        continue;
+      } else {
+        if (ch === '"') { inStr = true; continue; }
+        if (ch === openChar) depth++;
+        if (ch === closeChar) depth--;
+        if (depth === 0) {
+          const candidate = s.slice(start, i + 1);
+          const parsed = tryParseJson(stripBom(candidate));
+          if (parsed !== null) return parsed;
+          // если не распарсилось, продолжаем поиск дальше (бывает мусор внутри)
+        }
+      }
+    }
+    return null;
   }
 
   function extractNextData(html) {
     const m = String(html).match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
     if (!m) return null;
-    try { return JSON.parse(m[1]); } catch { return null; }
+    return tryParseJson(stripBom(m[1]));
   }
+
+  async function fetchJsonSmart(url) {
+    const text = await fetchTextSmart(url);
+    const t = stripBom(text);
+
+    // 1) чистый JSON
+    const direct = tryParseJson(t.trim());
+    if (direct !== null) return direct;
+
+    // 2) fenced json
+    const fenced = extractJsonFromFences(t);
+    if (fenced !== null) return fenced;
+
+    // 3) __NEXT_DATA__ если это HTML
+    const next = extractNextData(t);
+    if (next !== null) return next;
+
+    // 4) балансная эвристика
+    const balanced = extractBalancedJson(t);
+    if (balanced !== null) return balanced;
+
+    throw new Error('Не смог распарсить JSON/NextData');
+  }
+
+  // ---------- Locate likely script object ----------
 
   function deepFindLikelyScript(obj) {
     const stack = [obj];
     const seen = new Set();
+
     while (stack.length) {
       const cur = stack.pop();
       if (!cur || typeof cur !== 'object') continue;
@@ -214,34 +299,45 @@
         cur.entries ||
         cur.lorebook?.entries ||
         cur.script?.entries ||
-        cur.data?.entries;
+        cur.data?.entries ||
+        cur.props?.pageProps?.entries ||
+        cur.props?.pageProps?.script?.entries ||
+        cur.props?.pageProps?.lorebook?.entries;
 
       const title =
-        cur.name || cur.title || cur.script?.name || cur.script?.title || cur.data?.name || cur.data?.title;
+        cur.name || cur.title ||
+        cur.script?.name || cur.script?.title ||
+        cur.data?.name || cur.data?.title ||
+        cur.props?.pageProps?.name || cur.props?.pageProps?.title ||
+        cur.props?.pageProps?.script?.name || cur.props?.pageProps?.script?.title;
 
       if (title && Array.isArray(entries)) return cur;
-      for (const v of Object.values(cur)) if (v && typeof v === 'object') stack.push(v);
+
+      for (const v of Object.values(cur)) {
+        if (v && typeof v === 'object') stack.push(v);
+      }
     }
+
     return null;
   }
 
+  // ---------- Download Janitor (API first, page last) ----------
+
   async function fetchJanitorScript(uuid36, pageUrl) {
-    // пробуем JSON endpoint’ы, потом страницу
-    const candidates = [
+    // ВАЖНО: API endpoints сначала — они почти всегда JSON и лучше проходят через прокси.
+    const apiCandidates = [
       `https://janitorai.com/api/scripts/${uuid36}`,
       `https://janitorai.com/api/script/${uuid36}`,
-      pageUrl,
     ];
 
-    // 1) api
-    for (const u of candidates.slice(0, 2)) {
+    for (const u of apiCandidates) {
       try {
         const j = await fetchJsonSmart(u);
         if (j && typeof j === 'object') return j;
-      } catch {}
+      } catch (_) {}
     }
 
-    // 2) страница
+    // Если API не далось — пробуем страницу /scripts/..., вытащим __NEXT_DATA__
     const pageObj = await fetchJsonSmart(pageUrl);
     if (pageObj && typeof pageObj === 'object') return pageObj;
 
@@ -257,6 +353,8 @@
       root.name || root.title ||
       root.script?.name || root.script?.title ||
       root.data?.name || root.data?.title ||
+      root.props?.pageProps?.name || root.props?.pageProps?.title ||
+      root.props?.pageProps?.script?.name || root.props?.pageProps?.script?.title ||
       `Script ${uuid36.slice(0, 8)}`;
 
     const sourceEntries =
@@ -264,15 +362,21 @@
       (Array.isArray(root.script?.entries) && root.script.entries) ||
       (Array.isArray(root.lorebook?.entries) && root.lorebook.entries) ||
       (Array.isArray(root.data?.entries) && root.data.entries) ||
+      (Array.isArray(root.props?.pageProps?.entries) && root.props.pageProps.entries) ||
+      (Array.isArray(root.props?.pageProps?.script?.entries) && root.props.pageProps.script.entries) ||
+      (Array.isArray(root.props?.pageProps?.lorebook?.entries) && root.props.pageProps.lorebook.entries) ||
       [];
 
     const entries = [];
     for (const e of sourceEntries) {
       if (!e || typeof e !== 'object') continue;
 
-      const keys = normalizeKeys(e.keywords ?? e.keys ?? e.triggers ?? e.trigger ?? e.triggerWords ?? []);
-      const content = String(e.content ?? e.text ?? e.body ?? e.description ?? '').trim();
-      const comment = String(e.name ?? e.title ?? e.comment ?? '').trim();
+      const keys = normalizeKeys(
+        e.keywords ?? e.keys ?? e.triggers ?? e.trigger ?? e.triggerWords ?? e.activation ?? e.match ?? []
+      );
+
+      const content = String(e.content ?? e.text ?? e.body ?? e.description ?? e.value ?? '').trim();
+      const comment = String(e.name ?? e.title ?? e.comment ?? e.memo ?? '').trim();
 
       if (!content && !keys.length) continue;
 
@@ -289,9 +393,10 @@
     return { title, entries };
   }
 
-  // ---------- Save to World Info (через internal world-info.js) ----------
+  // ---------- Save to World Info ----------
 
   async function worldInfoApi() {
+    // index.js расширения лежит в /scripts/extensions/<ext>/index.js → два уровня вверх до /scripts/world-info.js
     return await import('../../world-info.js');
   }
 
@@ -350,21 +455,21 @@
     if (!id) { toastr.error('[JSI] Не смог вытащить UUID'); return; }
 
     try {
-      setStatus('Скачиваю…');
+      setStatus('Скачиваю (API → page)…');
       const raw = await fetchJanitorScript(id, url);
 
-      setStatus('Конвертирую…');
+      setStatus('Конвертирую entries…');
       const norm = normalizeJanitor(raw, id);
       if (!norm.entries.length) throw new Error('Entries не найдены (формат изменился или пусто)');
 
       setStatus('Сохраняю в World Info…');
       const name = await createAndFillWorldInfo(norm.title, norm.entries);
 
-      setStatus(`Готово: ${name} (${norm.entries.length})`);
+      setStatus(`Готово: ${name}\nentries: ${norm.entries.length}`);
       toastr.success(`✅ Импортировано: ${name} (${norm.entries.length})`);
     } catch (e) {
       console.error('[JSI] import failed', e);
-      setStatus('Ошибка');
+      setStatus(`Ошибка: ${e?.message || e}`);
       toastr.error(`[JSI] ${e?.message || e}`);
     }
   }
