@@ -23,7 +23,7 @@
 
 #jsi_settings_block input[type="text"]{
   flex: 1;
-  min-width: 220px;
+  min-width: 240px;
   padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid rgba(120,140,200,.25);
@@ -42,11 +42,6 @@
   font-size: 11px;
   opacity: .85;
   margin-top: 6px;
-}
-
-#jsi_settings_block .jsi_small {
-  font-size: 11px;
-  opacity: .65;
 }
 
 #jsi_settings_block .jsi_ck {
