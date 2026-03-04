@@ -1,4 +1,182 @@
-#jsi_settings_block {
+/* ===== Janitor Importer Drawer UI ===== */
+
+#ji_fab {
+  position: fixed;
+  right: 14px;
+  bottom: 96px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+#ji_fab button {
+  pointer-events: auto;
+  border: 1px solid rgba(120,140,200,.25);
+  background: rgba(10,18,32,.75);
+  color: #cfe2ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35);
+}
+
+#ji_fab_btn {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  min-width: 150px;
+}
+
+#ji_fab_btn .ji_big {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+#ji_fab_btn .ji_small {
+  font-size: 11px;
+  opacity: .8;
+}
+
+#ji_fab_hide {
+  width: 42px;
+  align-self: flex-end;
+  padding: 6px 0;
+  border-radius: 10px;
+  opacity: .85;
+}
+
+#ji_overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0,0,0,.45);
+  display: none;
+}
+
+#ji_drawer {
+  position: fixed;
+  top: 0;
+  right: -460px;
+  width: 460px;
+  max-width: calc(100vw - 24px);
+  height: 100vh;
+  z-index: 9999;
+  background: rgba(10,18,32,.96);
+  border-left: 1px solid rgba(120,140,200,.25);
+  box-shadow: -18px 0 40px rgba(0,0,0,.45);
+  transition: right .18s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+#ji_drawer.ji-open {
+  right: 0;
+}
+
+#ji_drawer header {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid rgba(120,140,200,.18);
+}
+
+#ji_drawer header .topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#ji_drawer header .title {
+  font-weight: 900;
+  letter-spacing: .02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#ji_drawer header .subtitle {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: .75;
+  line-height: 1.35;
+}
+
+#ji_close {
+  border: 1px solid rgba(120,140,200,.25);
+  background: rgba(10,18,32,.6);
+  color: #cfe2ff;
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+#ji_drawer .content {
+  padding: 12px;
+  overflow: auto;
+  flex: 1;
+}
+
+.ji_block {
+  border: 1px solid rgba(120,140,200,.18);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255,255,255,.03);
+}
+
+.ji_row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ji_row input[type="text"] {
+  flex: 1;
+  min-width: 260px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(120,140,200,.22);
+  background: rgba(10,18,32,.55);
+  color: #cfe2ff;
+}
+
+.ji_ck {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  user-select: none;
+  font-size: 12px;
+  opacity: .9;
+}
+
+.ji_hint {
+  margin-top: 8px;
+  font-size: 11px;
+  opacity: .75;
+  line-height: 1.35;
+}
+
+#ji_status {
+  margin-top: 10px;
+  font-size: 11px;
+  opacity: .95;
+  white-space: pre-wrap;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(120,140,200,.18);
+  background: rgba(0,0,0,.18);
+}
+
+#ji_actions .menu_button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* ===== Settings block in Extensions panel ===== */
+#ji_settings_block {
   border: 1px solid rgba(120,140,200,.25);
   border-radius: 10px;
   padding: 10px;
@@ -6,71 +184,17 @@
   background: rgba(10,18,32,.35);
 }
 
-#jsi_settings_block .jsi_title {
-  font-weight: 700;
+#ji_settings_block .ji_s_title {
+  font-weight: 800;
   margin-bottom: 6px;
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-#jsi_settings_block .jsi_row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-
-#jsi_settings_block input[type="text"]{
-  flex: 1;
-  min-width: 340px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(120,140,200,.25);
-  background: rgba(10,18,32,.55);
-  color: #cfe2ff;
-}
-
-#jsi_settings_block .jsi_help {
+#ji_settings_block .ji_s_help {
   font-size: 11px;
-  opacity: .78;
+  opacity: .75;
   margin-top: 6px;
   line-height: 1.35;
-}
-
-#jsi_settings_block .jsi_status {
-  font-size: 11px;
-  opacity: .95;
-  margin-top: 6px;
-  white-space: pre-wrap;
-}
-
-#jsi_settings_block .jsi_ck {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  user-select: none;
-}
-
-#jsi_settings_block .jsi_warn {
-  margin-top: 6px;
-  font-size: 11px;
-  opacity: .9;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(240,190,60,.25);
-  background: rgba(240,190,60,.08);
-}
-
-#jsi_settings_block .jsi_btnrow {
-  display:flex;
-  gap:8px;
-  margin-top:6px;
-  flex-wrap:wrap;
-}
-
-#jsi_settings_block .jsi_btnrow .menu_button {
-  padding: 4px 10px;
-  font-size: 12px;
 }
