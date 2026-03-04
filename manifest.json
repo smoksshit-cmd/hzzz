@@ -1,10 +1,8 @@
 {
-  "name": "Janitor Importer",
-  "version": "1.0.0",
-  "author": "Custom",
-  "description": "Import JanitorAI scripts and lorebooks into SillyTavern",
-  "entry": "index.js",
-  "css": [
-    "style.css"
-  ]
+  "display_name": "Janitor Script Importer",
+  "version": "1.0.1",
+  "author": "local",
+  "description": "Import JanitorAI /scripts/* into SillyTavern World Info (Lorebook)",
+  "js": "index.js",
+  "css": "style.css"
 }
