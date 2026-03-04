@@ -7,15 +7,20 @@
     enabled: true,
     namePrefix: 'Janitor - ',
 
-    // Порядок попыток:
-    // 1) direct fetch (самый приватный)
+    // Порядок: direct -> proxies -> (optional) server fallback
     tryDirectFetch: true,
 
-    // 2) browser proxy (не требует config.yaml, но это сторонний сервис)
-    useJinaProxyFallback: true,
-    jinaBase: 'https://r.jina.ai/',
+    // Несколько прокси: какие-то могут умереть/резать/переписывать.
+    // allorigins обычно отдаёт сырой контент и лучше для JSON, чем jina.
+    proxyMode: 'auto', // auto|off
+    proxies: [
+      // allorigins raw
+      (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      // jina reader (иногда полезно, иногда нет)
+      (url) => `https://r.jina.ai/${url}`,
+    ],
 
-    // 3) server fallback (/api/assets/download) — у многих 403 без whitelist, выключено по умолчанию
+    // server fallback выключен (у многих 403 без whitelist)
     useServerDownloadFallback: false,
   });
 
@@ -51,6 +56,15 @@
           <button class="menu_button" id="jsi_import_btn">Импорт</button>
         </div>
 
+        <div class="jsi_btnrow">
+          <button class="menu_button" id="jsi_import_json_btn" title="Вставить готовый JSON формата World Info">
+            Импорт из JSON (вставить)
+          </button>
+          <button class="menu_button" id="jsi_debug_btn" title="Показать отладочную информацию последней загрузки">
+            Debug
+          </button>
+        </div>
+
         <div class="jsi_row">
           <label class="jsi_ck">
             <input type="checkbox" id="jsi_enabled" ${s.enabled ? 'checked' : ''}>
@@ -59,28 +73,28 @@
 
           <label class="jsi_ck" style="margin-left:10px">
             <input type="checkbox" id="jsi_direct" ${s.tryDirectFetch ? 'checked' : ''}>
-            <span>Сначала прямой fetch</span>
+            <span>Сначала direct fetch</span>
           </label>
 
           <label class="jsi_ck" style="margin-left:10px">
-            <input type="checkbox" id="jsi_jina" ${s.useJinaProxyFallback ? 'checked' : ''}>
-            <span>Fallback через r.jina.ai</span>
+            <input type="checkbox" id="jsi_proxy" ${s.proxyMode !== 'off' ? 'checked' : ''}>
+            <span>Использовать прокси (если надо)</span>
           </label>
 
           <label class="jsi_ck" style="margin-left:10px">
             <input type="checkbox" id="jsi_server" ${s.useServerDownloadFallback ? 'checked' : ''}>
-            <span>Fallback через сервер ST</span>
+            <span>Server fallback (/api/assets/download)</span>
           </label>
         </div>
 
         <div class="jsi_warn">
-          ⚠️ r.jina.ai — сторонний reader-прокси. Если включён, ссылка/контент проходят через него.
-          Если не ок — выключи “Fallback через r.jina.ai” и пользуйся direct fetch (если он у тебя работает).
+          Если Janitor режет CORS/Cloudflare — расширение попробует прокси (allorigins/jina).<br>
+          Server fallback часто даёт 403 без whitelist — поэтому по умолчанию выключен.
         </div>
 
         <div class="jsi_help">
-          Поддерживает ссылки: <code>https://janitorai.com/scripts/UUID</code><br>
-          Импорт создаёт новый World Info и переносит entries (keys/content/order).
+          Поддерживает <code>https://janitorai.com/scripts/UUID</code>.<br>
+          Создаёт новый World Info и добавляет entries (keys/content/order и дефолты ST).
         </div>
 
         <div class="jsi_status" id="jsi_status"></div>
@@ -89,7 +103,7 @@
 
     $('#jsi_enabled').on('change', () => { getSettings().enabled = $('#jsi_enabled').prop('checked'); ctx().saveSettingsDebounced(); });
     $('#jsi_direct').on('change',  () => { getSettings().tryDirectFetch = $('#jsi_direct').prop('checked'); ctx().saveSettingsDebounced(); });
-    $('#jsi_jina').on('change',    () => { getSettings().useJinaProxyFallback = $('#jsi_jina').prop('checked'); ctx().saveSettingsDebounced(); });
+    $('#jsi_proxy').on('change',   () => { getSettings().proxyMode = $('#jsi_proxy').prop('checked') ? 'auto' : 'off'; ctx().saveSettingsDebounced(); });
     $('#jsi_server').on('change',  () => { getSettings().useServerDownloadFallback = $('#jsi_server').prop('checked'); ctx().saveSettingsDebounced(); });
 
     $('#jsi_import_btn').on('click', async () => {
@@ -103,6 +117,14 @@
         const url = String($('#jsi_url').val() ?? '').trim();
         await importFromUrlFlow(url);
       }
+    });
+
+    $('#jsi_import_json_btn').on('click', async () => {
+      await importFromPastedJsonFlow();
+    });
+
+    $('#jsi_debug_btn').on('click', async () => {
+      await showDebug();
     });
   }
 
@@ -129,20 +151,28 @@
     return s.split(/[,;|\n]/g).map(x => x.trim()).filter(Boolean);
   }
 
+  // ---------- Debug storage ----------
+
+  let LAST_DEBUG = null;
+  function saveDebug(info) { LAST_DEBUG = info; }
+  async function showDebug() {
+    const { Popup } = ctx();
+    const text = LAST_DEBUG ? JSON.stringify(LAST_DEBUG, null, 2) : 'Нет данных. Сначала попробуй импорт.';
+    await Popup.show.text('JSI Debug', `<pre style="white-space:pre-wrap;max-height:60vh;overflow:auto">${escapeHtml(text)}</pre>`);
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replaceAll('&','&amp;').replaceAll('<','&lt;')
+      .replaceAll('>','&gt;').replaceAll('"','&quot;')
+      .replaceAll("'",'&#039;');
+  }
+
   // ---------- Fetch methods ----------
 
   async function fetchTextDirect(url) {
     const r = await fetch(url, { method: 'GET' });
     if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-    return await r.text();
-  }
-
-  async function fetchTextViaJina(url) {
-    const s = getSettings();
-    const base = String(s.jinaBase || 'https://r.jina.ai/').replace(/\/+$/, '/');
-    const proxyUrl = base + url; // https://r.jina.ai/https://...
-    const r = await fetch(proxyUrl, { method: 'GET' });
-    if (!r.ok) throw new Error(`Jina HTTP ${r.status} ${r.statusText}`);
     return await r.text();
   }
 
@@ -159,51 +189,58 @@
     return await resp.text();
   }
 
+  function looksLikeHtml(t) {
+    const s = String(t ?? '').trim().slice(0, 300).toLowerCase();
+    return s.startsWith('<!doctype') || s.startsWith('<html') || s.includes('<head') || s.includes('<body');
+  }
+
+  function looksLikeCloudflare(t) {
+    const s = String(t ?? '').toLowerCase();
+    return s.includes('cloudflare') || s.includes('attention required') || s.includes('checking your browser');
+  }
+
   async function fetchTextSmart(url) {
     const s = getSettings();
+    const attempts = [];
     const errors = [];
 
-    // 1) direct
-    if (s.tryDirectFetch) {
-      try { return await fetchTextDirect(url); }
-      catch (e) { errors.push(`direct: ${e?.message || e}`); }
+    if (s.tryDirectFetch) attempts.push({ kind: 'direct', run: () => fetchTextDirect(url) });
+
+    if (s.proxyMode !== 'off') {
+      for (const build of (s.proxies || [])) {
+        attempts.push({ kind: 'proxy', run: () => fetchTextDirect(build(url)), proxy: build(url) });
+      }
     }
 
-    // 2) jina
-    if (s.useJinaProxyFallback) {
-      try { return await fetchTextViaJina(url); }
-      catch (e) { errors.push(`jina: ${e?.message || e}`); }
+    if (s.useServerDownloadFallback) attempts.push({ kind: 'server', run: () => fetchTextViaServer(url) });
+
+    for (const a of attempts) {
+      try {
+        const text = await a.run();
+        // если пришёл cloudflare/html вместо json — считаем это неуспехом для API
+        if (looksLikeCloudflare(text)) throw new Error('Cloudflare/challenge page');
+        saveDebug({ step: 'fetchTextSmart', url, attempt: a, sample: String(text).slice(0, 600) });
+        return text;
+      } catch (e) {
+        errors.push(`${a.kind}${a.proxy ? `(${a.proxy})` : ''}: ${e?.message || e}`);
+      }
     }
 
-    // 3) server
-    if (s.useServerDownloadFallback) {
-      try { return await fetchTextViaServer(url); }
-      catch (e) { errors.push(`server: ${e?.message || e}`); }
-    }
-
-    throw new Error(`Не удалось скачать. ${errors.join(' | ')}`);
+    saveDebug({ step: 'fetchTextSmart_failed', url, errors });
+    throw new Error(`Не удалось скачать: ${errors.join(' | ')}`);
   }
 
   // ---------- Robust JSON parsing ----------
 
-  function tryParseJson(s) {
-    try { return JSON.parse(s); } catch { return null; }
-  }
+  function stripBom(s) { return String(s ?? '').replace(/^\uFEFF/, ''); }
+  function tryParseJson(s) { try { return JSON.parse(s); } catch { return null; } }
 
-  function stripBom(s) {
-    return String(s ?? '').replace(/^\uFEFF/, '');
-  }
-
-  function extractJsonFromFences(text) {
-    // ```json ... ``` или ``` ... ```
+  function extractFromFences(text) {
     const t = String(text ?? '');
     const re = /```(?:json)?\s*([\s\S]*?)```/gi;
     const blocks = [];
     let m;
-    while ((m = re.exec(t))) {
-      blocks.push(m[1]);
-    }
-    // пробуем с конца (обычно самый “жирный” блок — последний)
+    while ((m = re.exec(t))) blocks.push(m[1]);
     for (let i = blocks.length - 1; i >= 0; i--) {
       const p = tryParseJson(stripBom(blocks[i].trim()));
       if (p !== null) return p;
@@ -211,22 +248,24 @@
     return null;
   }
 
+  function extractNextData(html) {
+    const m = String(html).match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (!m) return null;
+    return tryParseJson(stripBom(m[1]));
+  }
+
   function extractBalancedJson(text) {
-    // вытаскиваем первый валидный JSON объект/массив по балансу скобок
     const s = String(text ?? '');
-    const firstObj = s.indexOf('{');
-    const firstArr = s.indexOf('[');
+    const startObj = s.indexOf('{');
+    const startArr = s.indexOf('[');
     let start = -1;
-
-    if (firstObj === -1) start = firstArr;
-    else if (firstArr === -1) start = firstObj;
-    else start = Math.min(firstObj, firstArr);
-
+    if (startObj === -1) start = startArr;
+    else if (startArr === -1) start = startObj;
+    else start = Math.min(startObj, startArr);
     if (start === -1) return null;
 
     const openChar = s[start];
     const closeChar = openChar === '{' ? '}' : ']';
-
     let depth = 0;
     let inStr = false;
     let esc = false;
@@ -247,39 +286,32 @@
           const candidate = s.slice(start, i + 1);
           const parsed = tryParseJson(stripBom(candidate));
           if (parsed !== null) return parsed;
-          // если не распарсилось, продолжаем поиск дальше (бывает мусор внутри)
         }
       }
     }
     return null;
   }
 
-  function extractNextData(html) {
-    const m = String(html).match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-    if (!m) return null;
-    return tryParseJson(stripBom(m[1]));
-  }
-
   async function fetchJsonSmart(url) {
-    const text = await fetchTextSmart(url);
-    const t = stripBom(text);
+    const text = stripBom(await fetchTextSmart(url));
 
     // 1) чистый JSON
-    const direct = tryParseJson(t.trim());
+    const direct = tryParseJson(text.trim());
     if (direct !== null) return direct;
 
-    // 2) fenced json
-    const fenced = extractJsonFromFences(t);
+    // 2) fenced JSON (прокси иногда так отдаёт)
+    const fenced = extractFromFences(text);
     if (fenced !== null) return fenced;
 
-    // 3) __NEXT_DATA__ если это HTML
-    const next = extractNextData(t);
+    // 3) __NEXT_DATA__ (если это HTML страница)
+    const next = extractNextData(text);
     if (next !== null) return next;
 
     // 4) балансная эвристика
-    const balanced = extractBalancedJson(t);
+    const balanced = extractBalancedJson(text);
     if (balanced !== null) return balanced;
 
+    saveDebug({ step: 'fetchJsonSmart_failed', url, sample: text.slice(0, 1200) });
     throw new Error('Не смог распарсить JSON/NextData');
   }
 
@@ -313,23 +345,21 @@
 
       if (title && Array.isArray(entries)) return cur;
 
-      for (const v of Object.values(cur)) {
-        if (v && typeof v === 'object') stack.push(v);
-      }
+      for (const v of Object.values(cur)) if (v && typeof v === 'object') stack.push(v);
     }
 
     return null;
   }
 
-  // ---------- Download Janitor (API first, page last) ----------
+  // ---------- Download Janitor (API first) ----------
 
   async function fetchJanitorScript(uuid36, pageUrl) {
-    // ВАЖНО: API endpoints сначала — они почти всегда JSON и лучше проходят через прокси.
     const apiCandidates = [
       `https://janitorai.com/api/scripts/${uuid36}`,
       `https://janitorai.com/api/script/${uuid36}`,
     ];
 
+    // 1) API
     for (const u of apiCandidates) {
       try {
         const j = await fetchJsonSmart(u);
@@ -337,14 +367,14 @@
       } catch (_) {}
     }
 
-    // Если API не далось — пробуем страницу /scripts/..., вытащим __NEXT_DATA__
+    // 2) Page (последний шанс)
     const pageObj = await fetchJsonSmart(pageUrl);
     if (pageObj && typeof pageObj === 'object') return pageObj;
 
-    throw new Error('Не смог получить данные ни через API, ни через страницу');
+    throw new Error('Не смог получить данные Janitor ни через API, ни через страницу');
   }
 
-  // ---------- Convert Janitor → ST World Info ----------
+  // ---------- Convert Janitor → entries[] ----------
 
   function normalizeJanitor(raw, uuid36) {
     const root = deepFindLikelyScript(raw) || raw;
@@ -393,10 +423,9 @@
     return { title, entries };
   }
 
-  // ---------- Save to World Info ----------
+  // ---------- Save to World Info using ST internals ----------
 
   async function worldInfoApi() {
-    // index.js расширения лежит в /scripts/extensions/<ext>/index.js → два уровня вверх до /scripts/world-info.js
     return await import('../../world-info.js');
   }
 
@@ -440,6 +469,42 @@
     return finalName;
   }
 
+  // ---------- Extra: import from pasted JSON (WorldInfo format like Eldoria.json) ----------
+
+  async function importFromPastedJsonFlow() {
+    const { Popup } = ctx();
+    const raw = await Popup.show.input(
+      'Импорт World Info JSON',
+      'Вставь JSON книги World Info (формат как у Eldoria.json: {"entries":{...}} )',
+      ''
+    );
+    if (!raw) return;
+
+    try {
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj !== 'object' || !obj.entries || typeof obj.entries !== 'object') {
+        throw new Error('Неверный формат: ожидался объект с полем "entries"');
+      }
+
+      const title = `Imported ${Date.now()}`;
+      const wi = await worldInfoApi();
+
+      const name = sanitizeName(`${getSettings().namePrefix}${title}`);
+      await wi.createNewWorldInfo(name, { interactive: false });
+
+      // saveWorldInfo ожидает объект книги; проще загрузить пустую и заменить entries
+      const book = await wi.loadWorldInfo(name);
+      book.entries = obj.entries;
+
+      await wi.saveWorldInfo(name, book, true);
+      toastr.success(`✅ Импортировано World Info: ${name}`);
+      setStatus(`Готово: ${name}`);
+    } catch (e) {
+      toastr.error(`Ошибка импорта JSON: ${e?.message || e}`);
+      setStatus(`Ошибка: ${e?.message || e}`);
+    }
+  }
+
   // ---------- Main flow ----------
 
   async function importFromUrlFlow(url) {
@@ -455,12 +520,12 @@
     if (!id) { toastr.error('[JSI] Не смог вытащить UUID'); return; }
 
     try {
-      setStatus('Скачиваю (API → page)…');
+      setStatus('Скачиваю Janitor (API → page)…');
       const raw = await fetchJanitorScript(id, url);
 
       setStatus('Конвертирую entries…');
       const norm = normalizeJanitor(raw, id);
-      if (!norm.entries.length) throw new Error('Entries не найдены (формат изменился или пусто)');
+      if (!norm.entries.length) throw new Error('Entries не найдены (Janitor формат изменился или пусто)');
 
       setStatus('Сохраняю в World Info…');
       const name = await createAndFillWorldInfo(norm.title, norm.entries);
