@@ -1,9 +1,16 @@
 /**
  * Black Market Shop (BMS) — SillyTavern Extension
- * v1.0.0
+ * v1.1.0
  *
  * Чёрный рынок: покупай запрещённые товары, применяй на бота,
  * следи за зависимостями и балансом.
+ *
+ * ИЗМЕНЕНИЯ v1.1.0:
+ * - Исправлен инжект эффектов (теперь бот реально получает промпт)
+ * - Исправлена кнопка закрытия магазина
+ * - Добавлена отдельная шкала зависимостей БОТА ({{char}})
+ * - Снижена скорость заполнения зависимостей (~60%)
+ * - Зависимости снижаются при лечении в РП (детект по ключевым словам)
  */
 
 (() => {
@@ -14,7 +21,6 @@
   const ADDICTION_TAG = 'BMS_ADDICTION';
   const FAB_POS_KEY   = 'bms_fab_v1';
   const FAB_MARGIN    = 8;
-  const EXT_PROMPT_TYPES = Object.freeze({ IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 });
 
   // ── Catalog ──────────────────────────────────────────────────────────────────
 
@@ -32,89 +38,90 @@
     { id: 'sexshop',    icon: '🌸', name: 'Секс-шоп'    },
   ];
 
+  // addAmt снижены примерно на 60% от оригинала для более медленного заполнения
   const ITEMS = [
     // ── НАРКОТИКИ ──────────────────────────────────────────────────────────────
     { id: 'weed',      cat: 'drugs',      icon: '🌿', name: 'Марихуана',
       desc: 'Лёгкая эйфория, расслабление, смех', price: 50,
-      add: 'drugs', addAmt: 4,
+      add: 'drugs', addAmt: 2,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: только что выкурил марихуану. {{char}} замечает расслабленность, беспричинный смех, запах травы, замедленные реакции. Лёгкая эйфория тонко окрашивает поведение {{user}} в этой сцене.' },
 
     { id: 'cocaine',   cat: 'drugs',      icon: '❄️', name: 'Кокаин',
       desc: 'Возбуждение, самоуверенность, агрессия', price: 150,
-      add: 'drugs', addAmt: 12,
+      add: 'drugs', addAmt: 5,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: употребил кокаин. {{char}} видит изменения — гиперактивность, ускоренная речь, самоуверенность на грани, расширенные зрачки. {{user}} ощущает себя непобедимым прямо сейчас.' },
 
     { id: 'heroin',    cat: 'drugs',      icon: '💉', name: 'Героин',
       desc: 'Глубокая эйфория, полная отстранённость', price: 200,
-      add: 'drugs', addAmt: 20,
+      add: 'drugs', addAmt: 8,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: употребил героин. {{char}} видит — {{user}} в опиоидной эйфории, речь размыта, движения вялые, взгляд стеклянный. Реальность кажется мягкой и далёкой.' },
 
     { id: 'amphet',    cat: 'drugs',      icon: '⚡', name: 'Амфетамин',
       desc: 'Энергия, паранойя, говорливость', price: 120,
-      add: 'drugs', addAmt: 10,
+      add: 'drugs', addAmt: 4,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: принял амфетамин. {{char}} замечает — {{user}} заряжен до предела, говорит не останавливаясь, зрачки огромные, паранойя прорывается в речи.' },
 
     { id: 'mdma',      cat: 'drugs',      icon: '💗', name: 'МДМА',
       desc: 'Эмпатия, любовь, открытость', price: 180,
-      add: 'drugs', addAmt: 8,
+      add: 'drugs', addAmt: 3,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: принял МДМА. {{char}} ощущает — {{user}} излучает теплоту и открытость, очень эмпатичен, говорит о чувствах которые обычно скрывает, тактильно чувствителен.' },
 
     // ── РЕДКИЕ ────────────────────────────────────────────────────────────────
     { id: 'pcp',       cat: 'rare_drugs', icon: '👁️', name: 'Ангельская пыль',
       desc: 'Диссоциация, непредсказуемость', price: 300,
-      add: 'drugs', addAmt: 15,
+      add: 'drugs', addAmt: 6,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: под действием PCP. {{char}} видит жуткое — {{user}} диссоциирован от реальности, не чувствует боли, поведение полностью непредсказуемо. Сцена становится опасной и нестабильной.' },
 
     { id: 'dmt',       cat: 'rare_drugs', icon: '🌀', name: 'ДМТ',
       desc: 'Мощные галлюцинации, трансцендентность', price: 400,
-      add: 'drugs', addAmt: 3,
+      add: 'drugs', addAmt: 1,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: переживает ДМТ-путешествие. {{char}} наблюдает — {{user}} недостижим для обычного общения, видит другие измерения, говорит образами. Это мистическое событие.' },
 
     { id: 'meth',      cat: 'rare_drugs', icon: '💎', name: 'Кристальный мет',
       desc: 'Паранойя, безумие, агрессия', price: 250,
-      add: 'drugs', addAmt: 18,
+      add: 'drugs', addAmt: 7,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: на кристальном мете. {{char}} видит опасное — паранойя, глаза горят безумием, любое слово может спровоцировать вспышку. {{user}} на краю срыва.' },
 
     { id: 'lsd',       cat: 'rare_drugs', icon: '🎨', name: 'ЛСД',
       desc: 'Яркие галлюцинации, изменение восприятия', price: 350,
-      add: 'drugs', addAmt: 5,
+      add: 'drugs', addAmt: 2,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: принял ЛСД. {{char}} замечает — {{user}} видит узоры на всём, реальность течёт и дышит, эмоции усилены многократно. Всё кажется глубоко значимым.' },
 
     // ── АЛКОГОЛЬ ──────────────────────────────────────────────────────────────
     { id: 'beer',      cat: 'alcohol',    icon: '🍺', name: 'Пиво',
       desc: 'Лёгкое расслабление', price: 20,
-      add: 'alcohol', addAmt: 2,
+      add: 'alcohol', addAmt: 1,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: выпил пиво. {{char}} замечает лёгкую расслабленность и открытость {{user}} в общении.' },
 
     { id: 'whiskey',   cat: 'alcohol',    icon: '🥃', name: 'Виски',
       desc: 'Тепло, смелость, прямолинейность', price: 60,
-      add: 'alcohol', addAmt: 5,
+      add: 'alcohol', addAmt: 2,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: выпил виски. {{char}} замечает — {{user}} смел, прямолинеен, говорит что думает, тепло в голосе и лёгкое покраснение лица.' },
 
     { id: 'absinthe',  cat: 'alcohol',    icon: '🍸', name: 'Абсент',
       desc: 'Лёгкие галлюцинации, лихорадочное возбуждение', price: 100,
-      add: 'alcohol', addAmt: 8,
+      add: 'alcohol', addAmt: 3,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: выпил абсент. {{char}} наблюдает — {{user}} возбуждён, речь поэтична и хаотична, видит вещи на периферии зрения.' },
 
     { id: 'moonshine', cat: 'alcohol',    icon: '🫙', name: 'Самогон',
       desc: 'Мощное опьянение, нестабильность', price: 40,
-      add: 'alcohol', addAmt: 6,
+      add: 'alcohol', addAmt: 2,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: выпил крепкий самогон. {{char}} видит — {{user}} быстро пьянеет, речь заплетается, настроение резко меняется между весельем и злостью.' },
 
     { id: 'vodka',     cat: 'alcohol',    icon: '🍾', name: 'Водка',
       desc: 'Классическое опьянение', price: 50,
-      add: 'alcohol', addAmt: 7,
+      add: 'alcohol', addAmt: 3,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: выпил водку. {{char}} замечает — {{user}} раскован, говорит громче, жесты шире. Тормоза отключаются постепенно.' },
 
     // ── МЕДИЦИНА ─────────────────────────────────────────────────────────────
     { id: 'painkillers', cat: 'meds',     icon: '💊', name: 'Обезболивающие',
       desc: 'Притупление боли и чувств', price: 80,
-      add: 'drugs', addAmt: 3,
+      add: 'drugs', addAmt: 1,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: принял сильные обезболивающие. {{char}} замечает — {{user}} безразличен к физической боли, эмоции приглушены, реакции замедлены.' },
 
     { id: 'tranq',     cat: 'meds',       icon: '😴', name: 'Транквилизаторы',
       desc: 'Сонливость, полное спокойствие', price: 150,
-      add: 'drugs', addAmt: 7,
+      add: 'drugs', addAmt: 3,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: принял транквилизаторы. {{char}} видит — {{user}} погружается в тяжёлое спокойствие, веки тяжёлые, тревога исчезла, движения вялые и медленные.' },
 
     { id: 'adrenaline', cat: 'meds',      icon: '⚡', name: 'Адреналин',
@@ -129,7 +136,7 @@
 
     { id: 'stimulants', cat: 'meds',      icon: '🔋', name: 'Сильные стимуляторы',
       desc: 'Концентрация, бессонница, резкость', price: 180,
-      add: 'drugs', addAmt: 6,
+      add: 'drugs', addAmt: 2,
       effect: 'СКРЫТОЕ СОСТОЯНИЕ {{user}}: принял мощные стимуляторы. {{char}} замечает — {{user}} сверхсосредоточен, речь быстрая и чёткая, реагирует мгновенно, спать не будет ещё долго.' },
 
     // ── ЯДЫ ──────────────────────────────────────────────────────────────────
@@ -161,43 +168,43 @@
 
     { id: 'grenade',   cat: 'explosives', icon: '💣', name: 'Граната',
       desc: 'Взрыв и ударная волна', price: 500,
-      add: 'violence', addAmt: 5,
+      add: 'violence', addAmt: 2,
       effect: '{{user}} бросил гранату. Оглушительный взрыв, ударная волна — {{char}} ошеломлён, ранен или с трудом укрылся. Это переломный момент сцены, всё изменилось.' },
 
     { id: 'c4',        cat: 'explosives', icon: '🔴', name: 'C4',
       desc: 'Профессиональная взрывчатка', price: 1000,
-      add: 'violence', addAmt: 5,
+      add: 'violence', addAmt: 2,
       effect: '{{user}} использовал C4. Мощный направленный взрыв — разрушения огромны. {{char}} в шоке. Это катастрофически и необратимо меняет всю сцену.' },
 
     { id: 'molotov',   cat: 'explosives', icon: '🔥', name: 'Коктейль Молотова',
       desc: 'Зажигательная смесь, огонь', price: 300,
-      add: 'violence', addAmt: 4,
+      add: 'violence', addAmt: 2,
       effect: '{{user}} бросил коктейль Молотова. Огонь вспыхивает и распространяется — {{char}} вынужден отступить, паника нарастает. Сцена охвачена огнём и хаосом.' },
 
     // ── ОРУЖИЕ ───────────────────────────────────────────────────────────────
     { id: 'knife',     cat: 'weapons',    icon: '🔪', name: 'Нож',
       desc: 'Скрытное холодное оружие', price: 300,
-      add: 'violence', addAmt: 3,
+      add: 'violence', addAmt: 1,
       effect: '{{user}} достал нож. {{char}} видит угрозу — холодная сталь меняет всё. Каждое слово, каждое движение теперь имеет другой вес и другую цену.' },
 
     { id: 'pistol',    cat: 'weapons',    icon: '🔫', name: 'Пистолет',
       desc: 'Огнестрельное оружие', price: 800,
-      add: 'violence', addAmt: 6,
+      add: 'violence', addAmt: 2,
       effect: '{{user}} достал пистолет. {{char}} замирает — всё изменилось мгновенно. Власть, страх, выбор. Этот момент определяет многое.' },
 
     { id: 'rifle',     cat: 'weapons',    icon: '🎯', name: 'Автомат',
       desc: 'Боевое огнестрельное оружие', price: 1500,
-      add: 'violence', addAmt: 8,
+      add: 'violence', addAmt: 3,
       effect: '{{user}} вооружён автоматом. {{char}} понимает — это не просто угроза, это война. Сцена переходит в режим выживания где каждый выбор критичен.' },
 
     { id: 'sniper',    cat: 'weapons',    icon: '🔭', name: 'Снайперская винтовка',
       desc: 'Дальнобойная смерть из тени', price: 2000,
-      add: 'violence', addAmt: 7,
+      add: 'violence', addAmt: 3,
       effect: '{{user}} прицелился из снайперской винтовки издалека. {{char}} не знает что в прицеле — это абсолютный контроль для {{user}} и полная уязвимость для {{char}}.' },
 
     { id: 'katana',    cat: 'weapons',    icon: '⚔️', name: 'Катана',
       desc: 'Смертоносный клинок мастера', price: 1200,
-      add: 'violence', addAmt: 5,
+      add: 'violence', addAmt: 2,
       effect: '{{user}} обнажил катану. {{char}} видит — это не просто оружие, это искусство смерти в руках умеющего. Сцена наполняется смертельной красотой и напряжением.' },
 
     // ── КОНТРАБАНДА ──────────────────────────────────────────────────────────
@@ -255,7 +262,7 @@
 
     { id: 'seduction', cat: 'potions',    icon: '💋', name: 'Зелье соблазнения',
       desc: 'Непреодолимое влечение', price: 300,
-      add: 'sex', addAmt: 5,
+      add: 'sex', addAmt: 2,
       effect: '{{user}} использовал зелье соблазнения. {{char}} чувствует мощное непреодолимое влечение — разум говорит одно, тело другое. Атмосфера становится заряженной и интимной.' },
 
     { id: 'fear_pot',  cat: 'potions',    icon: '😱', name: 'Зелье ужаса',
@@ -266,22 +273,22 @@
     // ── СЕКС-ШОП ────────────────────────────────────────────────────────────
     { id: 'aphrodisiac', cat: 'sexshop',  icon: '🌹', name: 'Афродизиак',
       desc: 'Усиление желания и чувствительности', price: 150,
-      add: 'sex', addAmt: 6,
+      add: 'sex', addAmt: 2,
       effect: '{{user}} применил афродизиак. {{char}} начинает ощущать нарастающее желание помимо воли — мысли приобретают интимный характер, тело реагирует острее. Сцена становится чувственной и напряжённой.' },
 
     { id: 'pheromones', cat: 'sexshop',   icon: '🌸', name: 'Феромоны',
       desc: 'Химическое притяжение, сближение', price: 200,
-      add: 'sex', addAmt: 4,
+      add: 'sex', addAmt: 2,
       effect: '{{user}} использовал синтетические феромоны. {{char}} неосознанно притягивается ближе, личное пространство сокращается, прикосновения воспринимаются острее и значительнее.' },
 
     { id: 'forbid_toy', cat: 'sexshop',   icon: '🔐', name: 'Запрещённая игрушка',
       desc: 'Предмет для взрослых игр', price: 300,
-      add: 'sex', addAmt: 7,
+      add: 'sex', addAmt: 3,
       effect: '{{user}} достал запрещённую игрушку. Присутствие этого предмета мгновенно меняет атмосферу — {{char}} смущён, заинтригован или возбуждён. Это открывает новое направление сцены.' },
 
     { id: 'blindfold',  cat: 'sexshop',   icon: '😏', name: 'Повязка на глаза',
       desc: 'Лишение зрения, острые ощущения', price: 100,
-      add: 'sex', addAmt: 3,
+      add: 'sex', addAmt: 1,
       effect: '{{user}} предлагает {{char}} повязку на глаза. Без зрения остальные чувства обострены до предела — каждый звук, прикосновение воспринимается иначе. Интимность и доверие в фокусе.' },
   ];
 
@@ -292,23 +299,39 @@
       name: 'Наркозависимость', icon: '💊', color: '#ff4455',
       cravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{user}}: жестокая ломка — дрожь, пот, спазмы. {{user}} думает только о дозе, с трудом держит себя в руках, раздражителен и отчаян.',
       mildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{user}}: лёгкая тяга к наркотикам фонит на заднем плане — {{user}} немного рассеян и нервозен, организм помнит.',
+      charCravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{char}}: жестокая ломка — дрожь, пот, спазмы. {{char}} думает только о дозе, с трудом держит себя в руках, раздражён и отчаян.',
+      charMildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{char}}: лёгкая тяга к наркотикам фонит на заднем плане — {{char}} немного рассеян и нервозен.',
     },
     alcohol: {
       name: 'Алкогольная зависимость', icon: '🍷', color: '#ff8833',
       cravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{user}}: сильное похмелье и жажда — руки трясутся, раздражительность, ищет любой повод выпить, мысли возвращаются к алкоголю.',
       mildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{user}}: лёгкая тяга к алкоголю — немного нервозен и раздражён без видимой причины.',
+      charCravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{char}}: похмелье и жажда — {{char}} ищет любой повод выпить, руки слегка дрожат, раздражителен.',
+      charMildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{char}}: лёгкая тяга к алкоголю — {{char}} немного нервозен без видимой причины.',
     },
     violence: {
       name: 'Жажда насилия', icon: '🔪', color: '#cc0000',
       cravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{user}}: жажда насилия и крови — агрессия без причины, взгляд холодный и опасный, руки сами тянутся к оружию. {{user}} ищет повод.',
       mildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{user}}: лёгкая агрессия под поверхностью, реакции резче обычного, нетерпимость к слабости.',
+      charCravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{char}}: жажда насилия — {{char}} агрессивен без причины, взгляд холодный и опасный. Ищет повод.',
+      charMildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{char}}: лёгкая агрессия под поверхностью, реакции резче обычного.',
     },
     sex: {
       name: 'Сексуальная зависимость', icon: '🌸', color: '#cc44aa',
       cravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{user}}: навязчивое желание не даёт покоя — концентрация нарушена, всё воспринимается через призму влечения, тело требует своего.',
       mildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{user}}: повышенная чувствительность и лёгкое возбуждение фонит, внимание легко захватывается интимным.',
+      charCravingEffect: 'ТАЙНОЕ СОСТОЯНИЕ {{char}}: навязчивое желание не даёт покоя — {{char}} воспринимает всё через призму влечения.',
+      charMildEffect:    'ФОНОВОЕ СОСТОЯНИЕ {{char}}: повышенная чувствительность, внимание {{char}} легко захватывается интимным.',
     },
   };
+
+  // Ключевые слова для детектирования лечения/реабилитации в ответах бота
+  const TREATMENT_KEYWORDS = [
+    'реабилитаци', 'лечени', 'терапи', 'трезвост', 'выздоровлени',
+    'детокс', 'воздержани', 'завязал', 'бросил', 'отказался',
+    'клиника', 'нарколог', 'psychiatr', 'rehab', 'recovery',
+    'чистый', 'протрезвел', 'протрезве', 'больниц',
+  ];
 
   // ── Default settings ──────────────────────────────────────────────────────
 
@@ -322,6 +345,7 @@
     addictionEnabled:    true,
     withdrawalThreshold: 40,
     collapsed:           false,
+    treatmentDetect:     true,
   });
 
   // ── Runtime ───────────────────────────────────────────────────────────────
@@ -335,6 +359,38 @@
   // ── ST context ────────────────────────────────────────────────────────────
 
   function ctx() { return SillyTavern.getContext(); }
+
+  // Получаем позицию промпта из контекста ST, с fallback
+  function getPromptPosition(type = 'IN_CHAT') {
+    const c = ctx();
+    if (c.extension_prompt_types && c.extension_prompt_types[type] !== undefined) {
+      return c.extension_prompt_types[type];
+    }
+    // fallback: IN_PROMPT=0, IN_CHAT=1, BEFORE_PROMPT=2
+    const map = { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
+    return map[type] ?? 1;
+  }
+
+  function setPrompt(key, text) {
+    try {
+      const pos = getPromptPosition('IN_CHAT');
+      if (typeof ctx().setExtensionPrompt === 'function') {
+        ctx().setExtensionPrompt(key, text, pos, 0, true);
+        return true;
+      }
+    } catch (e) {
+      console.error('[BMS] setExtensionPrompt error:', e);
+    }
+    return false;
+  }
+
+  function clearPrompt(key) {
+    try {
+      if (typeof ctx().setExtensionPrompt === 'function') {
+        ctx().setExtensionPrompt(key, '', getPromptPosition('IN_CHAT'), 0, false);
+      }
+    } catch {}
+  }
 
   function getSettings() {
     const { extensionSettings } = ctx();
@@ -357,18 +413,18 @@
 
   function emptyState() {
     return {
-      balance:    getSettings().startBalance,
-      inventory:  [],
-      addictions: { drugs: 0, alcohol: 0, violence: 0, sex: 0 },
-      lastUse:    {},
-      txLog:      [],
+      balance:         getSettings().startBalance,
+      inventory:       [],
+      addictions:      { drugs: 0, alcohol: 0, violence: 0, sex: 0 },
+      addictions_char: { drugs: 0, alcohol: 0, violence: 0, sex: 0 },
+      lastUse:         {},
+      lastUse_char:    {},
+      txLog:           [],
     };
   }
 
-  // Always read/write directly through ctx().chatMetadata to avoid stale references
   async function getChatState(create = false) {
     const key = chatKey();
-    // Always get fresh reference
     if (!ctx().chatMetadata[key]) {
       if (create) {
         ctx().chatMetadata[key] = emptyState();
@@ -378,15 +434,17 @@
       }
     }
     const s = ctx().chatMetadata[key];
-    if (!s.addictions) s.addictions = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
-    if (!s.lastUse)    s.lastUse    = {};
-    if (!s.txLog)      s.txLog      = [];
+    // Migrate / fill missing fields
+    if (!s.addictions)      s.addictions      = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
+    if (!s.addictions_char) s.addictions_char = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
+    if (!s.lastUse)         s.lastUse         = {};
+    if (!s.lastUse_char)    s.lastUse_char    = {};
+    if (!s.txLog)           s.txLog           = [];
     if (!Array.isArray(s.inventory)) s.inventory = [];
     if (typeof s.balance !== 'number') s.balance = getSettings().startBalance;
     return s;
   }
 
-  // Save via fresh ctx() to guarantee we save the correct metadata object
   async function saveState() {
     await ctx().saveMetadata();
   }
@@ -456,26 +514,32 @@
     const item = ITEMS.find(i => i.id === inv.itemId);
     if (!item) return;
 
-    // Build effect text based on target
     let effectText = item.effect;
     if (target === 'user') {
-      // Swap {{char}} and {{user}} roles — effect is applied TO the user, observed by char
-      effectText = item.effectOnUser || buildUserEffect(item);
+      effectText = buildUserEffect(item);
     }
 
-    try {
-      ctx().setExtensionPrompt(EFFECT_TAG, effectText, EXT_PROMPT_TYPES.IN_PROMPT, 0, true);
+    // ── FIX: inject prompt через ST API ─────────────────────────────────────
+    const ok = setPrompt(EFFECT_TAG, effectText);
+    if (ok) {
       effectActive = true;
-    } catch (e) { console.error('[BMS] inject error', e); }
+      console.log('[BMS] Effect injected:', effectText.slice(0, 80));
+    } else {
+      console.warn('[BMS] setExtensionPrompt unavailable');
+    }
 
     inv.qty -= 1;
     if (inv.qty <= 0) state.inventory = state.inventory.filter(i => i.id !== invId);
 
+    // Зависимость: на бота — addictions_char, на себя — addictions
     if (item.add && item.addAmt > 0 && getSettings().addictionEnabled) {
-      const addKey = target === 'user' ? `${item.add}_user` : item.add;
-      // For user target, track separately but same addiction types
-      state.addictions[item.add] = Math.min(100, (state.addictions[item.add] || 0) + item.addAmt);
-      state.lastUse[item.add]    = Date.now();
+      if (target === 'char') {
+        state.addictions_char[item.add] = Math.min(100, (state.addictions_char[item.add] || 0) + item.addAmt);
+        state.lastUse_char[item.add]    = Date.now();
+      } else {
+        state.addictions[item.add] = Math.min(100, (state.addictions[item.add] || 0) + item.addAmt);
+        state.lastUse[item.add]    = Date.now();
+      }
     }
 
     state.txLog.unshift({
@@ -489,7 +553,7 @@
     await updateAddictionPrompt();
     await renderShopContent();
 
-    const targetLabel = target === 'char' ? 'на персонажа' : 'на себя';
+    const targetLabel = target === 'char' ? 'на бота' : 'на себя';
     showToast(
       `${item.icon} <b>${escHtml(item.name)}</b> применён ${targetLabel}<br>` +
       `<span style="font-size:11px;opacity:.75">Эффект активен до следующего ответа</span>`,
@@ -497,9 +561,7 @@
     );
   }
 
-  // Build reversed effect when applied to {{user}} instead of {{char}}
   function buildUserEffect(item) {
-    // Replace perspective: {{user}} experiences it, {{char}} may observe
     return item.effect
       .replace(/СКРЫТОЕ СОСТОЯНИЕ {{user}}:/g, 'СКРЫТОЕ СОСТОЯНИЕ {{user}} (применено на себя):')
       .replace(/{{char}} замечает/g, '{{char}} может заметить')
@@ -507,11 +569,9 @@
       .replace(/{{char}} наблюдает/g, '{{char}} может наблюдать')
       .replace(/{{char}} ощущает/g, '{{char}} может ощутить')
       .replace(/{{char}} чувствует/g, '{{char}} может почувствовать')
-      // Weapon/poison effects reversed — char is target
       .replace(/{{user}} незаметно подмешал яд (.+?) {{char}}/g,
         '{{char}} незаметно использует яд против {{user}}. {{user}} это чувствует')
-      .replace(/{{user}} применил (.+?) на {{char}}/g,
-        '{{char}} применяет $1 на {{user}}')
+      .replace(/{{user}} применил (.+?) на {{char}}/g, '{{char}} применяет $1 на {{user}}')
       .replace(/{{user}} достал/g, '{{user}} достал')
       .replace(/{{user}} бросил/g, '{{user}} бросает');
   }
@@ -521,7 +581,7 @@
   function consumeEffect() {
     if (!effectActive) return;
     effectActive = false;
-    try { ctx().setExtensionPrompt(EFFECT_TAG, '', EXT_PROMPT_TYPES.IN_PROMPT, 0, true); } catch {}
+    clearPrompt(EFFECT_TAG);
   }
 
   // ── Addiction prompt ──────────────────────────────────────────────────────
@@ -529,29 +589,69 @@
   async function updateAddictionPrompt() {
     const s = getSettings();
     if (!s.addictionEnabled) {
-      try { ctx().setExtensionPrompt(ADDICTION_TAG, '', EXT_PROMPT_TYPES.IN_PROMPT, 0, true); } catch {}
+      clearPrompt(ADDICTION_TAG);
       return;
     }
 
-    const state  = await getChatState();
-    const now    = Date.now();
-    const HOUR   = 3600000;
-    const lines  = [];
+    const state   = await getChatState();
+    const now     = Date.now();
+    const HOUR    = 3600000;
+    const thresh  = s.withdrawalThreshold || 40;
+    const lines   = [];
 
+    // Зависимости игрока ({{user}})
     for (const [type, def] of Object.entries(ADDICTION_DEFS)) {
       const level = state.addictions[type] || 0;
       if (level <= 0) continue;
       const hoursSince = (now - (state.lastUse[type] || 0)) / HOUR;
-
-      if (level >= (s.withdrawalThreshold || 40) && hoursSince > 8) {
+      if (level >= thresh && hoursSince > 8) {
         lines.push(def.cravingEffect);
       } else if (level >= 20 && hoursSince > 2) {
         lines.push(def.mildEffect);
       }
     }
 
-    const text = lines.join('\n');
-    try { ctx().setExtensionPrompt(ADDICTION_TAG, text, EXT_PROMPT_TYPES.IN_PROMPT, 0, true); } catch {}
+    // Зависимости бота ({{char}})
+    for (const [type, def] of Object.entries(ADDICTION_DEFS)) {
+      const level = state.addictions_char[type] || 0;
+      if (level <= 0) continue;
+      const hoursSince = (now - (state.lastUse_char[type] || 0)) / HOUR;
+      if (level >= thresh && hoursSince > 8) {
+        lines.push(def.charCravingEffect);
+      } else if (level >= 20 && hoursSince > 2) {
+        lines.push(def.charMildEffect);
+      }
+    }
+
+    setPrompt(ADDICTION_TAG, lines.join('\n'));
+  }
+
+  // ── Treatment detection ───────────────────────────────────────────────────
+
+  async function checkTreatmentInMessage(messageText) {
+    if (!getSettings().treatmentDetect) return;
+    if (!messageText) return;
+
+    const lower = messageText.toLowerCase();
+    const hasTreatment = TREATMENT_KEYWORDS.some(kw => lower.includes(kw));
+    if (!hasTreatment) return;
+
+    const state = await getChatState(true);
+    let reduced = false;
+
+    // Снижаем зависимости бота при лечении в RP
+    for (const type of Object.keys(ADDICTION_DEFS)) {
+      if ((state.addictions_char[type] || 0) > 0) {
+        state.addictions_char[type] = Math.max(0, state.addictions_char[type] - 5);
+        reduced = true;
+      }
+    }
+
+    if (reduced) {
+      await saveState();
+      await updateAddictionPrompt();
+      showToast('🏥 Лечение в РП — зависимость бота снизилась', 'info', 3000);
+    }
   }
 
   // ── Earn coins ────────────────────────────────────────────────────────────
@@ -780,12 +880,27 @@
     `;
     document.body.appendChild(modal);
 
-    // !! Capture phase (true) — иначе ST перехватывает клик раньше нас
-    document.getElementById('bms_modal_close').addEventListener('click', (e) => {
-      e.stopPropagation();
+    // ── FIX: простой надёжный биндинг кнопки закрытия ──────────────────────
+    // Используем mousedown + preventDefault чтобы обойти любые ST-перехватчики
+    const closeBtn = document.getElementById('bms_modal_close');
+    closeBtn.addEventListener('mousedown', ev => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    closeBtn.addEventListener('click', ev => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
       closeShop();
     }, true);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && shopOpen) closeShop(); }, true);
+    // Дополнительно — прямой обработчик на случай если выше не сработает
+    closeBtn.onclick = (ev) => {
+      ev && ev.stopPropagation && ev.stopPropagation();
+      closeShop();
+      return false;
+    };
+
+    // Escape key
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && shopOpen) closeShop(); });
 
     modal.querySelectorAll('.bms-tab').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -997,50 +1112,62 @@
 
   function renderAddictionsTabHtml(state) {
     const getLevelLabel = v => {
-      if (v <= 0)  return { text: 'Чисто',          cls: 'clean'    };
-      if (v <= 20) return { text: 'Лёгкая привычка', cls: 'mild'     };
-      if (v <= 40) return { text: 'Зависимость',     cls: 'moderate' };
-      if (v <= 70) return { text: 'Сильная тяга',    cls: 'strong'   };
-      return               { text: '⚠️ КРИТИЧНО',    cls: 'critical' };
+      if (v <= 0)  return { text: 'Чисто',           cls: 'clean'    };
+      if (v <= 20) return { text: 'Лёгкая привычка',  cls: 'mild'     };
+      if (v <= 40) return { text: 'Зависимость',      cls: 'moderate' };
+      if (v <= 70) return { text: 'Сильная тяга',     cls: 'strong'   };
+      return               { text: '⚠️ КРИТИЧНО',     cls: 'critical' };
     };
 
-    const bars = Object.entries(ADDICTION_DEFS).map(([type, def]) => {
-      const level     = state.addictions[type] || 0;
-      const pct       = Math.min(100, level);
-      const lbl       = getLevelLabel(level);
-      const lastUseTs = state.lastUse?.[type];
-      const since     = lastUseTs
-        ? `${Math.floor((Date.now() - lastUseTs) / 3600000)} ч назад`
-        : 'никогда';
+    const renderSection = (title, addictions, lastUse, keyPrefix) => {
+      const bars = Object.entries(ADDICTION_DEFS).map(([type, def]) => {
+        const level     = addictions[type] || 0;
+        const pct       = Math.min(100, level);
+        const lbl       = getLevelLabel(level);
+        const lastUseTs = lastUse?.[type];
+        const since     = lastUseTs
+          ? `${Math.floor((Date.now() - lastUseTs) / 3600000)} ч назад`
+          : 'никогда';
+
+        return `
+          <div class="bms-add-row">
+            <div class="bms-add-top">
+              <span class="bms-add-icon">${def.icon}</span>
+              <span class="bms-add-name">${escHtml(def.name)}</span>
+              <span class="bms-add-badge bms-add-${lbl.cls}">${lbl.text}</span>
+            </div>
+            <div class="bms-add-bar-wrap">
+              <div class="bms-add-bar-fill bms-fill-${lbl.cls}" style="width:${pct}%"></div>
+            </div>
+            <div class="bms-add-meta">
+              <span>${level}/100</span>
+              <span>последний раз: ${since}</span>
+            </div>
+            ${level > 0
+              ? `<button class="bms-add-reduce-btn" data-type="${type}" data-prefix="${keyPrefix}">↓ Снизить на 15</button>`
+              : ''}
+          </div>`;
+      }).join('');
 
       return `
-        <div class="bms-add-row">
-          <div class="bms-add-top">
-            <span class="bms-add-icon">${def.icon}</span>
-            <span class="bms-add-name">${escHtml(def.name)}</span>
-            <span class="bms-add-badge bms-add-${lbl.cls}">${lbl.text}</span>
-          </div>
-          <div class="bms-add-bar-wrap">
-            <div class="bms-add-bar-fill bms-fill-${lbl.cls}" style="width:${pct}%"></div>
-          </div>
-          <div class="bms-add-meta">
-            <span>${level}/100</span>
-            <span>последний раз: ${since}</span>
-          </div>
-          ${level > 0
-            ? `<button class="bms-add-reduce-btn" data-type="${type}">↓ Снизить на 15</button>`
-            : ''}
+        <div class="bms-add-section">
+          <div class="bms-add-section-title">${title}</div>
+          ${bars}
         </div>`;
-    }).join('');
+    };
 
     return `
       <div class="bms-add-wrap">
-        ${bars}
+        ${renderSection('🤖 Зависимости бота ({{char}})', state.addictions_char, state.lastUse_char, 'char')}
+        ${renderSection('👤 Зависимости игрока ({{user}})', state.addictions, state.lastUse, 'user')}
         <div class="bms-add-info">
           <b>💡 Как работают зависимости:</b><br>
-          Каждое употребление увеличивает уровень. При уровне &gt;${getSettings().withdrawalThreshold || 40}
-          и долгом перерыве — бот получает скрытые инструкции о ломке/тяге.
-          При уровне &gt;20 через 2+ часа — лёгкие симптомы фонят в ответах.
+          При уровне &gt;${getSettings().withdrawalThreshold || 40} и перерыве 8+ ч — симптомы ломки в промпте.
+          При уровне &gt;20 и перерыве 2+ ч — лёгкие симптомы. Лечение в РП автоматически снижает шкалу бота.
+        </div>
+        <div class="bms-compact-btns">
+          <button class="menu_button" id="bms_reset_char_add">🔄 Сбросить зависимости бота</button>
+          <button class="menu_button" id="bms_reset_user_add">🔄 Сбросить зависимости игрока</button>
         </div>
       </div>`;
   }
@@ -1048,16 +1175,45 @@
   function bindAddictionsEvents() {
     const body = document.getElementById('bms_body');
     if (!body) return;
+
     body.querySelectorAll('.bms-add-reduce-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const type  = btn.getAttribute('data-type');
-        const state = await getChatState(true);
-        state.addictions[type] = Math.max(0, (state.addictions[type] || 0) - 15);
+        const type   = btn.getAttribute('data-type');
+        const prefix = btn.getAttribute('data-prefix');
+        const state  = await getChatState(true);
+
+        if (prefix === 'char') {
+          state.addictions_char[type] = Math.max(0, (state.addictions_char[type] || 0) - 15);
+        } else {
+          state.addictions[type] = Math.max(0, (state.addictions[type] || 0) - 15);
+        }
+
         await saveState();
         await updateAddictionPrompt();
         renderShopContent();
-        showToast(`📉 ${ADDICTION_DEFS[type]?.name} снижена на 15`, 'info');
+        const name = prefix === 'char' ? 'бота' : 'игрока';
+        showToast(`📉 ${ADDICTION_DEFS[type]?.name} (${name}) снижена на 15`, 'info');
       });
+    });
+
+    body.querySelector('#bms_reset_char_add')?.addEventListener('click', async () => {
+      const state = await getChatState(true);
+      state.addictions_char = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
+      state.lastUse_char    = {};
+      await saveState();
+      await updateAddictionPrompt();
+      renderShopContent();
+      showToast('🔄 Зависимости бота сброшены', 'info');
+    });
+
+    body.querySelector('#bms_reset_user_add')?.addEventListener('click', async () => {
+      const state = await getChatState(true);
+      state.addictions = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
+      state.lastUse    = {};
+      await saveState();
+      await updateAddictionPrompt();
+      renderShopContent();
+      showToast('🔄 Зависимости игрока сброшены', 'info');
     });
   }
 
@@ -1091,6 +1247,7 @@
         <label class="bms-ck"><input type="checkbox" id="bms_show_fab" ${s.showFab?'checked':''}><span>Виджет 💀</span></label>
         <label class="bms-ck"><input type="checkbox" id="bms_earn_enabled" ${s.earnEnabled?'checked':''}><span>Зарабатывать монеты</span></label>
         <label class="bms-ck"><input type="checkbox" id="bms_add_enabled" ${s.addictionEnabled?'checked':''}><span>Зависимости</span></label>
+        <label class="bms-ck"><input type="checkbox" id="bms_treat_detect" ${s.treatmentDetect?'checked':''}><span>Детект лечения в РП</span></label>
       </div>
       <div class="bms-srow bms-slider-row">
         <label>Размер кнопки:</label>
@@ -1136,7 +1293,7 @@
         <span id="bms_withdraw_val">${s.withdrawalThreshold || 40}</span>
       </div>
       <div class="bms-compact-btns">
-        <button class="menu_button" id="bms_reset_all_add">🔄 Сбросить все зависимости</button>
+        <button class="menu_button" id="bms_reset_all_add">🔄 Сбросить всё</button>
       </div>`;
 
     $(target).append(`
@@ -1153,7 +1310,6 @@
       </div>
     `);
 
-    // Accordion
     $(document).off('click.bms_sec').on('click.bms_sec', '.bms-sec-hdr', function () {
       const id   = this.getAttribute('data-sec');
       const body = $(this).next('.bms-sec-body');
@@ -1170,20 +1326,18 @@
       ctx().saveSettingsDebounced();
     });
 
-    // Checkboxes
-    $('#bms_enabled').on('input',       ev => { s.enabled = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); });
+    $('#bms_enabled').on('input',      ev => { s.enabled = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); });
     $('#bms_show_fab').on('input', async ev => { s.showFab = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); await renderFab(); });
-    $('#bms_earn_enabled').on('input',  ev => { s.earnEnabled = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); });
+    $('#bms_earn_enabled').on('input', ev => { s.earnEnabled = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); });
     $('#bms_add_enabled').on('input', async ev => { s.addictionEnabled = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); await updateAddictionPrompt(); });
+    $('#bms_treat_detect').on('input', ev => { s.treatmentDetect = $(ev.currentTarget).prop('checked'); ctx().saveSettingsDebounced(); });
 
-    // Scale slider
     $('#bms_scale').on('input', ev => {
       const v = parseFloat($(ev.currentTarget).val());
       s.fabScale = v; $('#bms_scale_val').text(Math.round(v * 100) + '%');
       ctx().saveSettingsDebounced(); applyFabScale(); applyFabPos();
     });
 
-    // Wallet
     $('#bms_start_balance').on('input', ev => { s.startBalance = parseInt($(ev.currentTarget).val()) || 500; ctx().saveSettingsDebounced(); });
     $('#bms_earn_per_msg').on('input',  ev => { const v = +$(ev.currentTarget).val(); s.earnPerMsg = v; $('#bms_earn_val').text(v); ctx().saveSettingsDebounced(); });
     $('#bms_withdraw_thresh').on('input', ev => { const v = +$(ev.currentTarget).val(); s.withdrawalThreshold = v; $('#bms_withdraw_val').text(v); ctx().saveSettingsDebounced(); });
@@ -1208,8 +1362,10 @@
 
     $('#bms_reset_all_add').on('click', async () => {
       const state = await getChatState(true);
-      state.addictions = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
-      state.lastUse    = {};
+      state.addictions      = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
+      state.addictions_char = { drugs: 0, alcohol: 0, violence: 0, sex: 0 };
+      state.lastUse         = {};
+      state.lastUse_char    = {};
       await saveState();
       await updateAddictionPrompt();
       showToast('🔄 Все зависимости сброшены', 'info');
@@ -1237,7 +1393,7 @@
 
     eventSource.on(event_types.CHAT_CHANGED, async () => {
       effectActive = false;
-      try { ctx().setExtensionPrompt(EFFECT_TAG, '', EXT_PROMPT_TYPES.IN_PROMPT, 0, true); } catch {}
+      clearPrompt(EFFECT_TAG);
       await renderFab();
       await updateAddictionPrompt();
     });
@@ -1245,6 +1401,18 @@
     eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
       consumeEffect();
       await updateAddictionPrompt();
+
+      // Детект лечения в ответе бота
+      try {
+        const chat = ctx().chat;
+        if (chat && chat.length > 0) {
+          const lastMsg = chat[chat.length - 1];
+          if (lastMsg && lastMsg.is_user === false) {
+            await checkTreatmentInMessage(lastMsg.mes || '');
+          }
+        }
+      } catch {}
+
       if (shopOpen && activeTab === 'inventory') await renderShopContent();
     });
 
@@ -1264,7 +1432,7 @@
   jQuery(() => {
     try {
       wireChatEvents();
-      console.log('[BMS] Чёрный рынок v1.0.0 загружен');
+      console.log('[BMS] Чёрный рынок v1.1.0 загружен');
     } catch (e) {
       console.error('[BMS] init failed', e);
     }
