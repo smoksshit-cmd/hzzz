@@ -1,6 +1,4 @@
-/* ═══════════════════════════════════════════════════════
-   EMOTION CANVAS — style.css  v1.0.0
-   ═══════════════════════════════════════════════════════ */
+/* EMOTION CANVAS v1.1.0 */
 
 :root {
   --ec-c1: #2C3E50;
@@ -8,23 +6,22 @@
   --ec-c3: #3D5266;
 }
 
-/* ── Gradient atmosphere layer ──────────────────────── */
-
-#ec-gradient-layer {
+/* ── Gradient layer ─────────────────────────────────── */
+#ec-gradient {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   opacity: 0;
-  transition: background 3s ease, opacity 1.5s ease;
+  transition: background 2.5s ease, opacity 1.5s ease;
   background:
-    radial-gradient(ellipse at 30% 60%, var(--ec-c1) 0%, var(--ec-c2) 50%, transparent 80%),
-    radial-gradient(ellipse at 75% 30%, var(--ec-c3) 0%, transparent 60%);
+    radial-gradient(ellipse at 25% 65%, var(--ec-c1) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 25%, var(--ec-c2) 0%, transparent 55%),
+    radial-gradient(ellipse at 55% 50%, var(--ec-c3) 0%, transparent 70%);
   mix-blend-mode: screen;
 }
 
-/* ── Particles container ────────────────────────────── */
-
+/* ── Particles ──────────────────────────────────────── */
 #ec-particles {
   position: fixed;
   inset: 0;
@@ -33,315 +30,263 @@
   overflow: hidden;
 }
 
-.ec-particle {
+.ec-p {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
-/* Joy - golden sparkles */
 .ec-p-joy {
-  background: radial-gradient(circle, #FFE566 0%, #FFA500 60%, transparent 100%);
-  animation: ec-float-up var(--dur, 4s) ease-out forwards;
+  background: radial-gradient(circle, #ffe566 0%, #ffa500 60%, transparent 100%);
+  animation: ec-up var(--dur,4s) ease-out forwards;
   filter: blur(0.5px);
 }
-
-/* Sadness - rain drops */
 .ec-p-sadness {
   border-radius: 0 0 2px 2px !important;
-  background: linear-gradient(to bottom, transparent, #7EB8F7 60%, #4A90D9);
-  animation: ec-rain var(--dur, 1.2s) linear forwards;
+  background: linear-gradient(to bottom, transparent, #7eb8f7 50%, #4a90d9);
+  animation: ec-rain var(--dur,1.2s) linear forwards;
 }
-
-/* Anger - embers */
 .ec-p-anger {
-  background: radial-gradient(circle, #FFEB3B 0%, #FF5722 50%, #B71C1C 100%);
-  animation: ec-ember var(--dur, 3s) ease-out forwards;
+  background: radial-gradient(circle, #ffeb3b 0%, #ff5722 50%, #b71c1c 100%);
+  animation: ec-ember var(--dur,3s) ease-out forwards;
   filter: blur(1px);
 }
-
-/* Fear - shadow wisps */
 .ec-p-fear {
-  background: radial-gradient(circle, #CE93D8 0%, #7B1FA2 50%, transparent 100%);
-  animation: ec-wisp var(--dur, 5s) ease-in-out forwards;
+  background: radial-gradient(circle, #ce93d8 0%, #7b1fa2 50%, transparent 100%);
+  animation: ec-wisp var(--dur,5s) ease-in-out forwards;
   filter: blur(3px);
 }
-
-/* Love - hearts */
 .ec-p-love {
-  background: radial-gradient(circle, #F48FB1 0%, #E91E8C 60%, transparent 100%);
-  animation: ec-float-love var(--dur, 5s) ease-out forwards;
+  background: radial-gradient(circle, #f48fb1 0%, #e91e8c 60%, transparent 100%);
+  animation: ec-up var(--dur,5s) ease-out forwards;
   filter: blur(0.5px);
 }
-
-/* Wonder - bubbles */
 .ec-p-wonder {
-  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.6) 0%, rgba(0,188,212,0.3) 50%, transparent 100%);
-  border: 1px solid rgba(0,188,212,0.4);
-  animation: ec-bubble var(--dur, 6s) ease-out forwards;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,.6) 0%, rgba(0,188,212,.3) 50%, transparent 100%);
+  border: 1px solid rgba(0,188,212,.4);
+  animation: ec-bubble var(--dur,6s) ease-out forwards;
 }
-
-/* Neutral - nothing */
 .ec-p-neutral { display: none; }
 
-/* ── Keyframes ──────────────────────────────────────── */
-
-@keyframes ec-float-up {
+@keyframes ec-up {
   0%   { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
-  50%  { transform: translateY(-40vh) scale(1.2) rotate(180deg); opacity: 0.8; }
-  100% { transform: translateY(-90vh) scale(0.3) rotate(360deg); opacity: 0; }
+  50%  { transform: translateY(-45vh) scale(1.2) rotate(180deg); opacity: .8; }
+  100% { transform: translateY(-95vh) scale(.3) rotate(360deg); opacity: 0; }
 }
-
 @keyframes ec-rain {
-  0%   { transform: translateY(-20px) scaleY(1); opacity: 0.8; }
-  100% { transform: translateY(110vh) scaleY(1.5); opacity: 0; }
+  0%   { transform: translateY(-20px); opacity: .8; }
+  100% { transform: translateY(110vh) scaleY(1.4); opacity: 0; }
 }
-
 @keyframes ec-ember {
   0%   { transform: translate(0,0) scale(1); opacity: 1; }
-  30%  { transform: translate(var(--dx,20px),-30vh) scale(1.5); opacity: 0.9; }
-  100% { transform: translate(calc(var(--dx,20px)*2),-80vh) scale(0.1); opacity: 0; }
+  30%  { transform: translate(var(--dx,20px),-30vh) scale(1.5); opacity: .9; }
+  100% { transform: translate(calc(var(--dx,20px)*2),-85vh) scale(.1); opacity: 0; }
 }
-
 @keyframes ec-wisp {
-  0%   { transform: translate(0,0) scale(1); opacity: 0.7; }
-  50%  { transform: translate(var(--dx,30px),var(--dy,-20px)) scale(2); opacity: 0.3; }
-  100% { transform: translate(calc(var(--dx,30px)*2),calc(var(--dy,-20px)*3)) scale(3); opacity: 0; }
+  0%   { transform: translate(0,0) scale(1); opacity: .7; }
+  50%  { transform: translate(var(--dx,30px),-20vh) scale(2); opacity: .3; }
+  100% { transform: translate(calc(var(--dx,30px)*2),-70vh) scale(3.5); opacity: 0; }
 }
-
-@keyframes ec-float-love {
-  0%   { transform: translateY(0) translateX(0) scale(1); opacity: 1; }
-  50%  { transform: translateY(-35vh) translateX(var(--dx,10px)) scale(1.3); opacity: 0.7; }
-  100% { transform: translateY(-80vh) translateX(calc(var(--dx,10px)*2)) scale(0.5); opacity: 0; }
-}
-
 @keyframes ec-bubble {
-  0%   { transform: translateY(0) scale(0.5); opacity: 0; }
-  10%  { opacity: 0.8; }
-  80%  { opacity: 0.6; }
-  100% { transform: translateY(-95vh) scale(1.5); opacity: 0; }
+  0%   { transform: translateY(0) scale(.5); opacity: 0; }
+  10%  { opacity: .8; }
+  80%  { opacity: .6; }
+  100% { transform: translateY(-95vh) scale(1.6); opacity: 0; }
 }
 
-/* ── FAB + Card panel ───────────────────────────────── */
-
-#ec-panel {
+/* ── Panel + FAB ────────────────────────────────────── */
+#ec-wrap {
   position: fixed;
-  bottom: 80px;
-  right: 16px;
-  z-index: 9500;
+  bottom: 76px;
+  right: 14px;
+  z-index: 9600;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
-  font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
-#ec-fab-btn {
-  width: 44px;
-  height: 44px;
+#ec-fab {
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(15,15,25,0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(12,12,22,.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
+  font-size: 19px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  color: white;
-  opacity: 0.45;
-  transition: all 0.25s ease;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  color: #fff;
+  opacity: .45;
+  transition: opacity .2s, transform .2s, box-shadow .2s;
+  box-shadow: 0 3px 16px rgba(0,0,0,.45);
+  padding: 0;
 }
 
-#ec-fab-btn:hover {
+#ec-fab:hover {
   opacity: 1;
-  transform: scale(1.08);
-  border-color: rgba(255,255,255,0.4);
-  box-shadow: 0 4px 30px rgba(0,0,0,0.6), 0 0 16px var(--ec-c1, rgba(100,100,255,0.3));
+  transform: scale(1.1);
+  box-shadow: 0 4px 24px rgba(0,0,0,.6), 0 0 14px var(--ec-c1,rgba(100,100,255,.3));
 }
 
-/* Card */
 #ec-card {
-  background: rgba(10,10,20,0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(8,8,18,.93);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,.09);
   border-radius: 16px;
-  padding: 14px 16px;
-  width: 220px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  padding: 14px 15px 12px;
+  width: 210px;
+  box-shadow: 0 8px 36px rgba(0,0,0,.55);
   display: none;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
   color: #fff;
   font-size: 12px;
 }
 
-#ec-card.ec-card-visible {
+#ec-card.ec-show {
   display: flex;
-  animation: ec-card-in 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  animation: ec-pop .28s cubic-bezier(.34,1.56,.64,1);
 }
 
-@keyframes ec-card-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.95); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes ec-pop {
+  from { opacity: 0; transform: translateY(8px) scale(.96); }
+  to   { opacity: 1; transform: none; }
 }
 
-#ec-card-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
+#ec-card-head {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  color: rgba(255,255,255,.28);
   text-transform: uppercase;
-  color: rgba(255,255,255,0.35);
 }
 
-#ec-lock-badge {
-  display: none;
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(255,200,0,0.8);
-  background: rgba(255,200,0,0.1);
-  border: 1px solid rgba(255,200,0,0.25);
+#ec-lock-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: rgba(255,200,0,.85);
+  background: rgba(255,200,0,.1);
+  border: 1px solid rgba(255,200,0,.22);
   border-radius: 20px;
   padding: 2px 8px;
+  width: fit-content;
 }
 
-#ec-emotion-display {
+#ec-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-#ec-emotion-icon {
-  font-size: 28px;
+#ec-icon {
+  font-size: 30px;
   line-height: 1;
-  transition: all 0.5s ease;
+  transition: filter .5s;
   flex-shrink: 0;
 }
 
-#ec-emotion-info {
+#ec-info {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  flex: 1;
 }
 
-#ec-emotion-name {
+#ec-name {
   font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  text-transform: capitalize;
-  transition: color 0.5s ease;
+  font-weight: 700;
+  transition: color .5s;
 }
 
-#ec-intensity-bar {
-  width: 100%;
+#ec-bar {
   height: 4px;
-  background: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,.1);
   border-radius: 2px;
   overflow: hidden;
 }
 
-#ec-intensity-fill {
+#ec-fill {
   height: 100%;
   width: 30%;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--ec-c2), var(--ec-c1));
   transition: width 1s ease, background 1.5s ease;
 }
 
-/* History chart */
-#ec-history-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+#ec-hist-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: rgba(255,255,255,.22);
   text-transform: uppercase;
-  color: rgba(255,255,255,0.25);
 }
 
-#ec-history-chart {
+#ec-hist {
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 36px;
+  height: 34px;
 }
 
-.ec-bar {
+.ec-hbar {
   flex: 1;
   border-radius: 2px 2px 0 0;
   min-height: 3px;
-  transition: height 0.5s ease, background 0.5s ease;
+  opacity: .72;
+  transition: height .4s;
   cursor: default;
-  opacity: 0.75;
 }
+.ec-hbar:hover { opacity: 1; }
 
-.ec-bar:hover { opacity: 1; }
-
-/* Controls */
-#ec-controls {
+#ec-btns {
   display: flex;
   gap: 6px;
 }
 
-.ec-ctrl {
+.ec-btn {
   flex: 1;
   padding: 5px 0;
   border-radius: 7px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.05);
-  color: rgba(255,255,255,0.55);
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(255,255,255,.05);
+  color: rgba(255,255,255,.5);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: .04em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all .18s;
 }
+.ec-btn:hover { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.22); }
+.ec-btn.ec-on { background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.3); }
 
-.ec-ctrl:hover {
-  background: rgba(255,255,255,0.1);
-  color: white;
-  border-color: rgba(255,255,255,0.25);
+/* ── Cinematic ──────────────────────────────────────── */
+body.ec-cine .mes {
+  background: rgba(8,8,18,.62) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border-color: rgba(255,255,255,.06) !important;
 }
+body.ec-cine #chat { background: transparent !important; }
+body.ec-cine #sheld, body.ec-cine #form_sheld { background: transparent !important; }
 
-.ec-ctrl.ec-active {
-  background: rgba(255,255,255,0.15);
-  color: white;
-  border-color: rgba(255,255,255,0.3);
-}
-
-/* ── Cinematic mode ─────────────────────────────────── */
-
-body.ec-cinematic .mes {
-  background: rgba(10,10,20,0.6) !important;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-color: rgba(255,255,255,0.07) !important;
-}
-
-body.ec-cinematic #chat {
-  background: transparent !important;
-}
-
-body.ec-cinematic #sheld,
-body.ec-cinematic #form_sheld {
-  background: transparent !important;
-}
-
-/* ── Settings panel ─────────────────────────────────── */
-
-#ec-settings-block {
+/* ── Settings block ─────────────────────────────────── */
+#ec-settings {
   margin: 8px 0;
   border-radius: 8px;
-  border: 1px solid rgba(100,160,255,0.14);
-  background: rgba(20,30,50,0.55);
+  border: 1px solid rgba(100,160,255,.13);
+  background: rgba(20,30,50,.55);
   overflow: hidden;
 }
 
-.ec-s-title {
+#ec-s-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -350,32 +295,25 @@ body.ec-cinematic #form_sheld {
   font-weight: 700;
   color: #90b8f8;
   background: linear-gradient(135deg, #1f3052, #162240);
-  letter-spacing: 0.02em;
+  letter-spacing: .02em;
 }
 
-.ec-s-title button {
+#ec-s-head button {
   background: none;
   border: none;
-  color: rgba(150,185,248,0.65);
+  color: rgba(150,185,248,.6);
   cursor: pointer;
   font-size: 13px;
   padding: 2px 6px;
   border-radius: 4px;
-  transition: background 0.15s;
 }
-
-.ec-s-title button:hover { background: rgba(100,160,255,0.14); }
+#ec-s-head button:hover { background: rgba(100,160,255,.14); }
 
 #ec-s-body {
   padding: 8px 12px 12px;
-}
-
-.ec-s-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
 }
 
 .ec-ck {
@@ -384,37 +322,16 @@ body.ec-cinematic #form_sheld {
   gap: 6px;
   cursor: pointer;
   font-size: 12px;
-  color: rgba(200,220,255,0.8);
+  color: rgba(200,220,255,.8);
 }
+.ec-ck input { margin: 0; }
 
-.ec-ck input[type="checkbox"] { margin: 0; flex-shrink: 0; }
-
-.ec-s-label {
-  font-size: 11px;
-  color: rgba(200,220,255,0.7);
-  white-space: nowrap;
+.ec-srow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.ec-slabel { font-size: 11px; color: rgba(200,220,255,.65); white-space: nowrap; }
+.ec-srow input[type=range] { flex: 1; accent-color: #5090e0; }
+.ec-srow span { font-size: 11px; font-weight: 700; color: #90b8f8; min-width: 22px; text-align: right; }
 
-.ec-s-row input[type="range"] { flex: 1; min-width: 60px; accent-color: #5090e0; }
-
-.ec-s-val {
-  font-size: 11px;
-  font-weight: 700;
-  color: #90b8f8;
-  min-width: 22px;
-  text-align: right;
-}
-
-.ec-s-info {
-  font-size: 10px;
-  color: rgba(180,200,240,0.4);
-  line-height: 1.55;
-  margin-top: 4px;
-}
-
-/* ── Mobile ─────────────────────────────────────────── */
-
-@media (max-width: 520px) {
-  #ec-panel { bottom: 60px; right: 10px; }
-  #ec-card  { width: 195px; }
-}
