@@ -141,6 +141,18 @@ function getSettings() {
         }
     }
     
+    // Migrate old NPC format (file/source/data/thumb) to new format (charAvatar/uploadData/uploadThumb)
+    const s = context.extensionSettings[MODULE_NAME];
+    if (s.npcReferences && s.npcReferences.length > 0 && s.npcReferences[0].source !== undefined) {
+        iigLog('INFO', 'Migrating old NPC format to new format...');
+        s.npcReferences = s.npcReferences.map(old => ({
+            name: old.name || '',
+            charAvatar: old.source !== 'upload' ? (old.file || '') : '',
+            uploadData: old.source === 'upload' ? (old.data || '') : '',
+            uploadThumb: old.source === 'upload' ? (old.thumb || '') : ''
+        }));
+    }
+    
     return context.extensionSettings[MODULE_NAME];
 }
 
@@ -459,16 +471,16 @@ async function getNpcAvatarBase64(npcRef) {
     try {
         if (!npcRef) return null;
         
-        // Prefer uploaded image
+        // Prefer uploaded image (already compressed during upload)
         if (npcRef.uploadData) {
-            console.log(`[IIG] Using uploaded NPC avatar: ${npcRef.name}`);
-            return await compressImageForReference(npcRef.uploadData, 1024, 0.8);
+            iigLog('INFO', `Using uploaded NPC avatar: ${npcRef.name} (${Math.round(npcRef.uploadData.length/1024)}KB)`);
+            return npcRef.uploadData;
         }
         
         // Fallback to character avatar
         if (npcRef.charAvatar) {
             const avatarUrl = `/characters/${encodeURIComponent(npcRef.charAvatar)}`;
-            console.log(`[IIG] Fetching NPC char avatar from: ${avatarUrl}`);
+            iigLog('INFO', `Fetching NPC char avatar from: ${avatarUrl}`);
             const base64 = await imageUrlToBase64(avatarUrl);
             if (base64) {
                 return await compressImageForReference(base64, 1024, 0.8);
@@ -477,7 +489,7 @@ async function getNpcAvatarBase64(npcRef) {
         
         return null;
     } catch (error) {
-        console.error(`[IIG] Error getting NPC avatar for ${npcRef?.name}:`, error);
+        iigLog('ERROR', `Error getting NPC avatar for ${npcRef?.name}:`, error.message);
         return null;
     }
 }
@@ -490,11 +502,10 @@ async function getStyleReferenceBase64() {
         const settings = getSettings();
         if (!settings.styleReferenceImage) return null;
         
-        console.log('[IIG] Using style reference image');
-        // Already stored as base64, just compress if needed
-        return await compressImageForReference(settings.styleReferenceImage, 1024, 0.85);
+        iigLog('INFO', `Using style reference image (${Math.round(settings.styleReferenceImage.length/1024)}KB)`);
+        return settings.styleReferenceImage; // Already compressed during upload
     } catch (error) {
-        console.error('[IIG] Error getting style reference:', error);
+        iigLog('ERROR', 'Error getting style reference:', error.message);
         return null;
     }
 }
@@ -753,11 +764,19 @@ async function generateImageOpenAI(prompt, style, referenceImages = [], options 
     // Note: Some providers may ignore this or return URL anyway
     body.response_format = 'b64_json';
     
-    // Reference images - DISABLED for standard /generations endpoint
-    // This endpoint doesn't support img2img, only text-to-image
-    // Reference images would need /edits endpoint or provider-specific API
+    // Reference images - try multiple strategies for different providers
     if (referenceImages.length > 0) {
-        console.log('[IIG] Reference images collected but NOT sent (/generations endpoint is text-to-image only)');
+        // Strategy 1: 'image' field as array of data URIs (some proxy providers)
+        body.image = referenceImages.map(b64 => `data:image/jpeg;base64,${b64}`);
+        
+        // Strategy 2: 'reference_images' field (some providers)
+        body.reference_images = referenceImages.map(b64 => ({
+            type: 'base64',
+            data: b64
+        }));
+        
+        iigLog('INFO', `OpenAI: Including ${referenceImages.length} reference image(s) in request body`);
+        iigLog('WARN', `OpenAI /generations endpoint has LIMITED reference support. For best results use Gemini/nano-banana API type.`);
     }
     
     // Log request details for debugging
@@ -896,28 +915,45 @@ async function generateImageGemini(prompt, style, referenceImages = [], options 
     if (referenceImages.length > 0) {
         const settings = getSettings();
         const hasStyleRef = !!settings.styleReferenceImage;
-        const hasNpcRefs = settings.npcReferences && settings.npcReferences.length > 0;
+        const hasNpcRefs = settings.npcReferences && settings.npcReferences.some(n => n.charAvatar || n.uploadData);
         
-        let refInstruction = '[CRITICAL: The reference image(s) above show the EXACT appearance of the character(s). You MUST precisely copy their: face structure, eye color, hair color and style, skin tone, body type, clothing, and all distinctive features. Do not deviate from the reference appearances.]';
+        // Build detailed reference mapping so the model knows which image is which
+        let refParts = [];
+        let imgIdx = 1;
         
-        // User avatar name mapping
-        if (settings.sendUserAvatar && settings.userAvatarName) {
-            refInstruction += `\n[USER CHARACTER: The character "${settings.userAvatarName}" corresponds to the user avatar reference. Use that reference for this character's appearance.]`;
+        if (settings.sendCharAvatar) {
+            refParts.push(`Image ${imgIdx}: Main character {{char}} - copy EXACT appearance`);
+            imgIdx++;
         }
-        
-        if (hasStyleRef) {
-            refInstruction += '\n[STYLE REFERENCE: One of the reference images above defines the TARGET ART STYLE. You MUST match its art style, color palette, rendering technique, line work, shading method, and overall aesthetic. Generate the new image in the exact same visual style.]';
+        if (settings.sendUserAvatar) {
+            const userName = settings.userAvatarName || '{{user}}';
+            refParts.push(`Image ${imgIdx}: User character "${userName}" - copy EXACT appearance AND art style from this image`);
+            imgIdx++;
         }
-        
+        if (settings.sendPreviousImage) {
+            refParts.push(`Image ${imgIdx}: Previous scene - maintain visual consistency`);
+            imgIdx++;
+        }
         if (hasNpcRefs) {
-            const promptLower = prompt.toLowerCase();
-            const matchedNpcs = settings.npcReferences
-                .filter(n => n.name && (n.charAvatar || n.uploadData) && promptLower.includes(n.name.toLowerCase()))
-                .map(n => n.name);
-            if (matchedNpcs.length > 0) {
-                refInstruction += `\n[NPC REFERENCES: Reference images include NPC characters: ${matchedNpcs.join(', ')}. Use their exact appearance from the references.]`;
+            for (const npc of settings.npcReferences) {
+                if (!npc.charAvatar && !npc.uploadData) continue;
+                if (npc.charAvatar) {
+                    refParts.push(`Image ${imgIdx}: NPC "${npc.name}" character avatar`);
+                    imgIdx++;
+                }
+                if (npc.uploadData) {
+                    refParts.push(`Image ${imgIdx}: NPC "${npc.name}" reference image - copy EXACT appearance`);
+                    imgIdx++;
+                }
             }
         }
+        if (hasStyleRef) {
+            refParts.push(`Image ${imgIdx}: ART STYLE REFERENCE - you MUST generate the image in the exact same art style, color palette, line work, shading, and rendering technique as this image`);
+            imgIdx++;
+        }
+        
+        let refInstruction = `[REFERENCE IMAGES MAP:\n${refParts.join('\n')}\n]`;
+        refInstruction += '\n[CRITICAL: Copy the EXACT appearance of all referenced characters. Match face structure, eye color, hair color/style, skin tone, body type, clothing. For the art style reference, match its visual style precisely - same rendering, colors, line quality, and aesthetic.]';
         
         fullPrompt = `${refInstruction}\n\n${fullPrompt}`;
     }
@@ -1059,22 +1095,18 @@ async function generateImageWithRetry(prompt, style, onStatusUpdate, options = {
         }
     }
     
-    // NPC reference avatars - only send if NPC name appears in the prompt
+    // NPC reference avatars - send all that have images
     if (settings.npcReferences && settings.npcReferences.length > 0) {
-        const promptLower = prompt.toLowerCase();
         for (const npcRef of settings.npcReferences) {
             if (!npcRef.name || (!npcRef.charAvatar && !npcRef.uploadData)) continue;
             
-            // Check if NPC name appears in the generation prompt
-            if (promptLower.includes(npcRef.name.toLowerCase())) {
-                console.log(`[IIG] NPC "${npcRef.name}" found in prompt, adding reference...`);
-                const npcAvatar = await getNpcAvatarBase64(npcRef);
-                if (npcAvatar) {
-                    referenceImages.push(npcAvatar);
-                    console.log(`[IIG] NPC avatar "${npcRef.name}" added to references`);
-                }
+            iigLog('INFO', `Adding NPC reference: "${npcRef.name}" (charAvatar: ${!!npcRef.charAvatar}, uploadData: ${!!npcRef.uploadData}, uploadDataLen: ${npcRef.uploadData?.length || 0})`);
+            const npcAvatar = await getNpcAvatarBase64(npcRef);
+            if (npcAvatar) {
+                referenceImages.push(npcAvatar);
+                iigLog('INFO', `NPC avatar "${npcRef.name}" added to references (${Math.round(npcAvatar.length/1024)}KB)`);
             } else {
-                console.log(`[IIG] NPC "${npcRef.name}" not found in prompt, skipping`);
+                iigLog('WARN', `NPC avatar "${npcRef.name}" returned null`);
             }
         }
     }
@@ -1083,8 +1115,14 @@ async function generateImageWithRetry(prompt, style, onStatusUpdate, options = {
     const styleRef = await getStyleReferenceBase64();
     if (styleRef) {
         referenceImages.push(styleRef);
-        console.log('[IIG] Style reference image added to references');
+        iigLog('INFO', `Style reference image added (${Math.round(styleRef.length/1024)}KB)`);
     }
+    
+    iigLog('INFO', `=== Reference summary: ${referenceImages.length} total images ===`);
+    iigLog('INFO', `  charAvatar=${settings.sendCharAvatar}, userAvatar=${settings.sendUserAvatar}, prevImage=${settings.sendPreviousImage}`);
+    iigLog('INFO', `  NPC refs=${settings.npcReferences?.length || 0}, styleRef=${!!settings.styleReferenceImage}`);
+    iigLog('INFO', `  Total ref data: ${referenceImages.reduce((sum, r) => sum + r.length, 0)} chars (~${Math.round(referenceImages.reduce((sum, r) => sum + r.length, 0) / 1024)}KB)`);
+    
     
     console.log(`[IIG] Total reference images: ${referenceImages.length}`);
     
@@ -2092,7 +2130,7 @@ function createSettingsUI() {
                     
                     <!-- NPC References -->
                     <h5>NPC-референсы</h5>
-                    <p class="hint">Добавьте NPC с именами и картинками. Референс отправляется автоматически, если имя NPC встречается в промпте генерации.</p>
+                    <p class="hint">Добавьте NPC с именами и картинками. Все загруженные референсы отправляются при каждой генерации.</p>
                     
                     <div id="iig_npc_list" class="iig-npc-list"></div>
                     
@@ -2461,10 +2499,12 @@ function bindSettingsEvents() {
         if (!file) return;
         
         try {
-            const base64 = await fileToBase64(file);
-            const thumb = await createThumbnail(base64, 100);
+            const rawBase64 = await fileToBase64(file);
+            // Compress before storing (raw can be 5-10MB, breaks settings save)
+            const compressed = await compressImageForReference(rawBase64, 768, 0.85);
+            const thumb = await createThumbnail(rawBase64, 100);
             
-            settings.styleReferenceImage = base64;
+            settings.styleReferenceImage = compressed;
             settings.styleReferenceThumb = thumb;
             saveSettings();
             
@@ -2475,7 +2515,8 @@ function bindSettingsEvents() {
             }
             document.getElementById('iig_style_ref_clear').style.display = '';
             
-            toastr.success('Стиль-референс загружен', 'Генерация картинок');
+            iigLog('INFO', `Style ref: raw ${Math.round(rawBase64.length/1024)}KB -> compressed ${Math.round(compressed.length/1024)}KB`);
+            toastr.success(`Стиль-референс загружен (${Math.round(compressed.length/1024)}KB)`, 'Генерация картинок');
         } catch (err) {
             toastr.error('Ошибка загрузки: ' + err.message, 'Генерация картинок');
         }
@@ -2571,13 +2612,16 @@ function bindSettingsEvents() {
         if (!file) return;
         
         try {
-            const base64 = await fileToBase64(file);
-            const thumb = await createThumbnail(base64, 80);
-            npc.uploadData = base64;
+            const rawBase64 = await fileToBase64(file);
+            // CRITICAL: Compress before storing in settings (raw can be 5-10MB, breaks save)
+            const compressed = await compressImageForReference(rawBase64, 512, 0.8);
+            const thumb = await createThumbnail(rawBase64, 80);
+            npc.uploadData = compressed;
             npc.uploadThumb = thumb;
             saveSettings();
             rebuildNpcList();
-            toastr.success(`Референс загружен для ${npc.name}`, 'Генерация картинок');
+            iigLog('INFO', `NPC "${npc.name}" image: raw ${Math.round(rawBase64.length/1024)}KB -> compressed ${Math.round(compressed.length/1024)}KB`);
+            toastr.success(`Референс загружен для ${npc.name} (${Math.round(compressed.length/1024)}KB)`, 'Генерация картинок');
         } catch (err) {
             toastr.error('Ошибка загрузки: ' + err.message, 'Генерация картинок');
         }
