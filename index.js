@@ -135,37 +135,16 @@ async function fetchModels() {
         console.warn('[IIG] Cannot fetch models: endpoint or API key not set');
         return [];
     }
-    const baseUrl = settings.endpoint.replace(/\/$/, '');
-    const isGemini = settings.apiType === 'gemini' || baseUrl.includes('googleapis.com');
-
-    let url, fetchOptions;
-    if (isGemini) {
-        url = `${baseUrl}/v1beta/models?key=${settings.apiKey}`;
-        fetchOptions = { method: 'GET' };
-    } else {
-        url = `${baseUrl}/v1/models`;
-        fetchOptions = {
+    const url = `${settings.endpoint.replace(/\/$/, '')}/v1/models`;
+    try {
+        const response = await fetch(url, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${settings.apiKey}` }
-        };
-    }
-
-    try {
-        const response = await fetch(url, fetchOptions);
+        });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-
-        let modelIds = [];
-        if (isGemini) {
-            const models = data.models || [];
-            modelIds = models.map(m => (m.name || '').replace('models/', ''))
-                .filter(id => id.includes('image') || id.includes('flash') || id.includes('pro'));
-        } else {
-            const models = data.data || [];
-            modelIds = models.filter(m => isImageModel(m.id)).map(m => m.id);
-        }
-        console.log(`[IIG] Fetched ${modelIds.length} models`);
-        return modelIds;
+        const models = data.data || [];
+        return models.filter(m => isImageModel(m.id)).map(m => m.id);
     } catch (error) {
         console.error('[IIG] Failed to fetch models:', error);
         toastr.error(`Ошибка загрузки моделей: ${error.message}`, 'Генерация картинок');
@@ -457,7 +436,7 @@ async function saveImageToFile(dataUrl) {
         }
     }
 
-    const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/s);
+    const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
     if (!match) {
         console.error('[IIG] Invalid data URL, starts with:', dataUrl?.substring(0, 100));
         throw new Error('Invalid data URL format');
@@ -519,16 +498,9 @@ async function getCharacterAvatarBase64() {
         const character = context.characters?.[context.characterId];
         console.log('[IIG] Character from array:', character?.name, 'avatar:', character?.avatar);
         if (character?.avatar) {
-            // FIX: Try thumbnail endpoint first (works in most ST versions)
-            const thumbUrl = `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`;
-            console.log('[IIG] Trying thumbnail avatar:', thumbUrl);
-            let result = await imageUrlToBase64(thumbUrl);
-            if (result) return result;
-
-            // Fallback: try direct characters path
-            const directUrl = `/characters/${encodeURIComponent(character.avatar)}`;
-            console.log('[IIG] Trying direct avatar path:', directUrl);
-            return await imageUrlToBase64(directUrl);
+            const avatarUrl = `/characters/${encodeURIComponent(character.avatar)}`;
+            console.log('[IIG] Found character avatar:', avatarUrl);
+            return await imageUrlToBase64(avatarUrl);
         }
 
         console.log('[IIG] Could not get character avatar');
@@ -1098,11 +1070,9 @@ async function parseImageTags(text, options = {}) {
             continue;
         }
 
-        // FIX: Track both single and double quotes in brace counting
         let braceCount = 0;
         let jsonEnd = -1;
         let inString = false;
-        let stringChar = null;
         let escapeNext = false;
 
         for (let i = jsonStart; i < text.length; i++) {
@@ -1118,9 +1088,8 @@ async function parseImageTags(text, options = {}) {
                 continue;
             }
 
-            if ((char === '"' || char === "'") && (!inString || char === stringChar)) {
-                if (inString) { inString = false; stringChar = null; }
-                else { inString = true; stringChar = char; }
+            if (char === '"') {
+                inString = !inString;
                 continue;
             }
 
@@ -1142,25 +1111,12 @@ async function parseImageTags(text, options = {}) {
             continue;
         }
 
-        // FIX: Search for closing > that's not inside a quoted attribute
-        let imgEnd = -1;
-        {
-            let inAttr = false;
-            let attrChar = null;
-            for (let i = jsonEnd; i < text.length; i++) {
-                const c = text[i];
-                if ((c === '"' || c === "'") && (!inAttr || c === attrChar)) {
-                    if (inAttr) { inAttr = false; attrChar = null; }
-                    else { inAttr = true; attrChar = c; }
-                    continue;
-                }
-                if (c === '>' && !inAttr) { imgEnd = i + 1; break; }
-            }
-        }
+        let imgEnd = text.indexOf('>', jsonEnd);
         if (imgEnd === -1) {
             searchPos = markerPos + 1;
             continue;
         }
+        imgEnd++;
 
         const fullImgTag = text.substring(imgStart, imgEnd);
         const instructionJson = text.substring(jsonStart, jsonEnd);
@@ -1205,24 +1161,13 @@ async function parseImageTags(text, options = {}) {
 
         try {
             let normalizedJson = instructionJson
-                .replace(/&quot;/g, '"')
-                .replace(/&apos;/g, "'")
-                .replace(/&#39;/g, "'")
-                .replace(/&#34;/g, '"')
                 .replace(/\u201c/g, '"')
                 .replace(/\u2018/g, "'")
                 .replace(/\u2019/g, "'")
                 .replace(/\u201d/g, '"')
                 .replace(/&amp;/g, '&');
 
-            // FIX: Try parsing as-is first, then with quote normalization
-            let data;
-            try {
-                data = JSON.parse(normalizedJson);
-            } catch (_) {
-                normalizedJson = normalizedJson.replace(/'/g, '"');
-                data = JSON.parse(normalizedJson);
-            }
+            const data = JSON.parse(normalizedJson);
 
             tags.push({
                 fullMatch: fullImgTag,
@@ -1254,11 +1199,9 @@ async function parseImageTags(text, options = {}) {
 
         const jsonStart = markerIndex + marker.length;
 
-        // FIX: Track single quotes too in legacy brace counting
         let braceCount = 0;
         let jsonEnd = -1;
         let inString = false;
-        let stringChar = null;
         let escapeNext = false;
 
         for (let i = jsonStart; i < text.length; i++) {
@@ -1274,9 +1217,8 @@ async function parseImageTags(text, options = {}) {
                 continue;
             }
 
-            if ((char === '"' || char === "'") && (!inString || char === stringChar)) {
-                if (inString) { inString = false; stringChar = null; }
-                else { inString = true; stringChar = char; }
+            if (char === '"') {
+                inString = !inString;
                 continue;
             }
 
@@ -1309,14 +1251,8 @@ async function parseImageTags(text, options = {}) {
         const tagOnly = text.substring(markerIndex, jsonEnd + 1);
 
         try {
-            // FIX: Try parsing as-is first, fallback to single->double quote conversion
-            let data;
-            try {
-                data = JSON.parse(jsonStr);
-            } catch (_) {
-                const normalizedJson = jsonStr.replace(/'/g, '"');
-                data = JSON.parse(normalizedJson);
-            }
+            const normalizedJson = jsonStr.replace(/'/g, '"');
+            const data = JSON.parse(normalizedJson);
 
             tags.push({
                 fullMatch: tagOnly,
@@ -1444,10 +1380,6 @@ async function processMessageTags(messageId) {
 
                 if (instruction) {
                     const decodedInstruction = instruction
-                        .replace(/&quot;/g, '"')
-                        .replace(/&apos;/g, "'")
-                        .replace(/&#39;/g, "'")
-                        .replace(/&#34;/g, '"')
                         .replace(/\u201c/g, '"')
                         .replace(/\u2018/g, "'")
                         .replace(/\u2019/g, "'")
@@ -1455,10 +1387,6 @@ async function processMessageTags(messageId) {
                         .replace(/&amp;/g, '&');
 
                     const normalizedSearchPrompt = searchPrompt
-                        .replace(/&quot;/g, '"')
-                        .replace(/&apos;/g, "'")
-                        .replace(/&#39;/g, "'")
-                        .replace(/&#34;/g, '"')
                         .replace(/\u201c/g, '"')
                         .replace(/\u2018/g, "'")
                         .replace(/\u2019/g, "'")
@@ -1616,13 +1544,8 @@ async function processMessageTags(messageId) {
         }
     };
 
-    // FIX: Process tags SEQUENTIALLY instead of in parallel.
-    // Promise.all caused race conditions: multiple tags searching the same DOM
-    // simultaneously would find the same element or miss elements just replaced.
     try {
-        for (let index = 0; index < tags.length; index++) {
-            await processTag(tags[index], index);
-        }
+        await Promise.all(tags.map((tag, index) => processTag(tag, index)));
     } catch (err) {
         iigLog('ERROR', `Unexpected error processing tags for message ${messageId}:`, err.message);
     }
@@ -1966,7 +1889,7 @@ function updateCharAvatarPreview() {
     if (character?.avatar) {
         const img = preview.querySelector('img');
         if (img) {
-            img.src = `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`;
+            img.src = `/characters/${encodeURIComponent(character.avatar)}`;
         }
         preview.style.display = '';
     } else {
@@ -2038,10 +1961,9 @@ function selectAvatar(avatarFile, thumbSrc) {
     const selected = document.getElementById('iig_avatar_dropdown_selected');
     if (selected) {
         if (avatarFile) {
-            const safeName = sanitizeForHtml(avatarFile);
             selected.innerHTML = `
                 <img class="iig-dropdown-thumb" src="/User Avatars/${encodeURIComponent(avatarFile)}" alt="" onerror="this.style.display='none'">
-                <span class="iig-dropdown-text">${safeName}</span>
+                <span class="iig-dropdown-text">${avatarFile}</span>
                 <span class="iig-dropdown-arrow fa-solid fa-chevron-down"></span>
             `;
         } else {
