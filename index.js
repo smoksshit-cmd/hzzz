@@ -1,4 +1,3 @@
-javascript
 /**
  * Inline Image Generation Extension for SillyTavern
  *
